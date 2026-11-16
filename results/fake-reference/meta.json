@@ -1,0 +1,13 @@
+{
+  "model": "fake-reference",
+  "label": "EXEMPLE : faux agent qui copie la solution de référence (pas un vrai modèle)",
+  "example": true,
+  "release_date": null,
+  "cmd": [
+    "{python}",
+    "{bench}/fake_agent.py",
+    "copy-reference",
+    "{reference}"
+  ],
+  "updated_at": "2026-11-16T00:05:06+00:00"
+}

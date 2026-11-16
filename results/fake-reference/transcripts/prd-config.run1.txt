@@ -1,0 +1,8 @@
+# Message final
+(non fourni par la commande)
+
+# stdout
+Faux agent : solution de référence copiée. Aucun modèle n'a été appelé.
+
+
+# stderr

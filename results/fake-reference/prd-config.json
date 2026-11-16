@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "model": "fake-reference",
+  "label": "EXEMPLE : faux agent qui copie la solution de référence (pas un vrai modèle)",
+  "example": true,
+  "task": "prd-config",
+  "kind": "prd",
+  "title": "Configuration en couches avec variables",
+  "task_fingerprint": "503ae5eeaeda",
+  "bench_commit": "541bb74",
+  "date": "2026-11-16T00:05:07+00:00",
+  "repeat": 1,
+  "passed_runs": 1,
+  "passed": true,
+  "mean_agent_duration_s": 0.02,
+  "total_cost_usd": null,
+  "runs": [
+    {
+      "run": 1,
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 32,
+      "tests_total": 32,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_duration_s": 0.02,
+      "grading_duration_s": 0.38,
+      "tokens": null,
+      "cost_usd": null,
+      "turns": null
+    }
+  ]
+}

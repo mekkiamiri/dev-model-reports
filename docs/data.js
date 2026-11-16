@@ -129,5 +129,12 @@ window.BENCH = {
   ]
  },
  "reports": [],
- "examples": []
+ "examples": [
+  {
+   "model": "fake-reference",
+   "label": "EXEMPLE : faux agent qui copie la solution de référence (pas un vrai modèle)",
+   "date": "2026-11-16",
+   "href": "rapports/fake-reference-2026-11-16.html"
+  }
+ ]
 };

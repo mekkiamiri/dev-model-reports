@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "model": "fake-reference",
+  "label": "EXEMPLE : faux agent qui copie la solution de référence (pas un vrai modèle)",
+  "example": true,
+  "task": "prd-facture",
+  "kind": "prd",
+  "title": "Calcul de facture à partir d'un CSV",
+  "task_fingerprint": "c11972d8895a",
+  "bench_commit": "541bb74",
+  "date": "2026-11-16T00:05:07+00:00",
+  "repeat": 1,
+  "passed_runs": 1,
+  "passed": true,
+  "mean_agent_duration_s": 0.03,
+  "total_cost_usd": null,
+  "runs": [
+    {
+      "run": 1,
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 25,
+      "tests_total": 25,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_duration_s": 0.03,
+      "grading_duration_s": 0.38,
+      "tokens": null,
+      "cost_usd": null,
+      "turns": null
+    }
+  ]
+}
