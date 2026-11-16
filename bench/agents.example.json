@@ -1,0 +1,38 @@
+{
+  "fake-reference": {
+    "label": "EXEMPLE : faux agent qui copie la solution de référence (pas un vrai modèle)",
+    "example": true,
+    "cmd": ["{python}", "{bench}/fake_agent.py", "copy-reference", "{reference}"],
+    "usage": "none"
+  },
+  "fake-noop": {
+    "label": "EXEMPLE : faux agent qui ne fait rien (pas un vrai modèle)",
+    "example": true,
+    "cmd": ["{python}", "{bench}/fake_agent.py", "noop"],
+    "usage": "none"
+  },
+  "claude-opus-5-5": {
+    "label": "Claude Opus 5.5 via Claude Code (claude -p)",
+    "release_date": null,
+    "cmd": [
+      "claude", "-p", "{prompt}",
+      "--model", "claude-opus-5-5",
+      "--output-format", "json",
+      "--permission-mode", "acceptEdits",
+      "--allowedTools", "Bash(javac *)", "Bash(java *)", "Bash(find *)", "Bash(mkdir *)", "Bash(ls *)"
+    ],
+    "usage": "claude-json"
+  },
+  "claude-sonnet-5-5": {
+    "label": "Claude Sonnet 5.5 via Claude Code (claude -p)",
+    "release_date": null,
+    "cmd": [
+      "claude", "-p", "{prompt}",
+      "--model", "claude-sonnet-5-5",
+      "--output-format", "json",
+      "--permission-mode", "acceptEdits",
+      "--allowedTools", "Bash(javac *)", "Bash(java *)", "Bash(find *)", "Bash(mkdir *)", "Bash(ls *)"
+    ],
+    "usage": "claude-json"
+  }
+}

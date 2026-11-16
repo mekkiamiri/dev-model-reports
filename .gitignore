@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.class
+out/
+.DS_Store
+# Configuration locale des agents (copie de bench/agents.example.json)
+bench/agents.json

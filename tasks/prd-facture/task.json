@@ -1,0 +1,8 @@
+{
+  "id": "prd-facture",
+  "kind": "prd",
+  "title": "Calcul de facture à partir d'un CSV",
+  "summary": "Lire des lignes de commande, appliquer remise et TVA par taux, signaler l'erreur à la bonne ligne.",
+  "timeout_agent_s": 1800,
+  "timeout_tests_s": 60
+}

@@ -1,0 +1,8 @@
+{
+  "id": "prd-config",
+  "kind": "prd",
+  "title": "Configuration en couches avec variables",
+  "summary": "Fusionner des fichiers de propriétés par priorité, remplacer les ${variables}, détecter les cycles.",
+  "timeout_agent_s": 1800,
+  "timeout_tests_s": 60
+}

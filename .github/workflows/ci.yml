@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Tâches valides (référence passe, départ et mutants échouent)
+        run: python3 bench/run.py --check
+      - name: Tests du banc (faux agents, aucun modèle appelé)
+        run: python3 -m unittest discover -s tests -v
+      - name: Page de démo à jour
+        run: python3 bench/build_site.py --check

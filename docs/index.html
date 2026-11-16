@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-model-reports : ce que les benchmarks ne disent pas</title>
+<meta name="description" content="Chaque nouveau modèle passe le même banc de tâches de développeur Java, dans les jours qui suivent sa sortie : PRD et tests cachés, bug, refactoring, et une grille de ressenti fixe.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#121416; --fg:#e9e4d8; --muted:#a9a39a; --dim:#5b5f63; --line:#2a2e31; --amber:#ffb000; --amber-soft:rgba(255,176,0,.14); --card:#171a1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:radial-gradient(ellipse at 72% 0%,#1c2023 0%,#121416 60%) fixed; color:var(--fg); font:15px/1.65 'Martian Mono', ui-monospace, monospace; }
+  main { max-width:960px; margin:0 auto; padding:56px 20px 90px; }
+  h1, h2, h3 { font-family:'Instrument Serif', serif; font-weight:400; letter-spacing:-.01em; margin:0; }
+  h1 { font-size:clamp(2.4rem, 7vw, 4.4rem); line-height:1.02; }
+  h2 { font-size:clamp(1.8rem, 4.5vw, 2.6rem); margin:72px 0 14px; }
+  h3 { font-size:1.5rem; }
+  em { color:var(--amber); font-style:italic; }
+  a { color:var(--amber); }
+  .k { color:var(--amber); letter-spacing:.2em; text-transform:uppercase; font-size:.78rem; margin-bottom:14px; }
+  .lead { color:var(--muted); font-size:1.02rem; max-width:720px; margin:22px 0; }
+  .muted { color:var(--muted); }
+  .readouts { display:flex; flex-wrap:wrap; gap:12px; margin:28px 0; }
+  .readouts div { border:1px solid var(--dim); padding:12px 18px; min-width:150px; }
+  .readouts b { display:block; font-size:1.9rem; font-weight:500; color:var(--amber); text-shadow:0 0 12px rgba(255,176,0,.35); }
+  .readouts span { font-size:.72rem; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; }
+  .todo { display:inline-block; border:1px dashed var(--amber); color:var(--amber); padding:3px 10px; font-size:.8rem; letter-spacing:.06em; }
+  ol.steps { list-style:none; counter-reset:s; padding:0; margin:0; }
+  ol.steps li { counter-increment:s; border-top:1px solid var(--line); padding:14px 0 14px 56px; position:relative; }
+  ol.steps li::before { content:counter(s, decimal-leading-zero); position:absolute; left:0; top:14px; color:var(--amber); font-weight:500; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:12px; }
+  button { font:inherit; color:var(--fg); background:var(--card); border:1px solid var(--line); padding:8px 12px; cursor:pointer; }
+  button:hover, button:focus-visible { border-color:var(--amber); outline:none; }
+  button[aria-pressed="true"] { background:var(--amber); color:#121416; border-color:var(--amber); }
+  .task { text-align:left; display:block; width:100%; padding:16px; }
+  .task small { display:block; color:var(--amber); letter-spacing:.12em; text-transform:uppercase; font-size:.7rem; margin-bottom:6px; }
+  .task b { display:block; font-weight:500; margin-bottom:6px; }
+  .task span { color:var(--muted); font-size:.85rem; }
+  .panel { border:1px solid var(--line); background:var(--card); padding:18px; margin-top:14px; }
+  pre.doc { white-space:pre-wrap; word-break:break-word; margin:0; font:13px/1.6 'Martian Mono', monospace; color:var(--fg); max-height:460px; overflow:auto; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .crit { border-top:1px solid var(--line); padding:14px 0; }
+  .crit .head { display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:baseline; }
+  .crit .scores { display:flex; gap:6px; }
+  .crit .scores button { width:40px; padding:6px 0; }
+  .crit p { margin:6px 0; color:var(--muted); font-size:.85rem; }
+  .crit .anchor { color:var(--fg); font-size:.85rem; min-height:1.4em; }
+  textarea, input { width:100%; font:inherit; font-size:.85rem; color:var(--fg); background:#0d0f10; border:1px solid var(--line); padding:8px; }
+  textarea:focus, input:focus { border-color:var(--amber); outline:none; }
+  .out { display:grid; grid-template-columns:1fr; gap:12px; }
+  @media (min-width:760px) { .out { grid-template-columns:1fr 1fr; } }
+  .check li { list-style:none; border-top:1px solid var(--line); padding:10px 0; display:flex; gap:12px; align-items:flex-start; }
+  .check { padding:0; margin:12px 0 0; }
+  .check time { color:var(--amber); min-width:150px; font-size:.85rem; }
+  .check input { width:auto; margin-top:5px; }
+  .empty { border:1px dashed var(--dim); padding:22px; color:var(--muted); }
+  footer { margin-top:80px; color:var(--muted); font-size:.85rem; border-top:1px solid var(--line); padding-top:18px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="k">dev-model-reports · banc v0</div>
+  <h1>Le score dit <em>record</em>.<br>Et sur du vrai code ?</h1>
+  <p class="lead">Chaque nouveau modèle arrive avec un score record. Ici, il passe le même banc de tâches de développeur Java dans les jours qui suivent sa sortie : construire à partir d'un PRD avec des tests cachés, corriger un bug, refactorer. On publie la réussite, le temps, le coût, et une grille de ressenti fixe.</p>
+  <div class="readouts" id="readouts"></div>
+  <p><span class="todo">mesures à venir</span> <span class="muted">Le banc tourne (tests verts, faux agent en CI). Aucun modèle réel n'a encore été mesuré.</span></p>
+
+  <h2>Comment ça marche</h2>
+  <ol class="steps">
+    <li>L'agent reçoit un dossier neuf : la tâche, le PRD, le contrat d'interface. <span class="muted">Rien d'autre.</span></li>
+    <li>Quand il a fini, on applique des tests d'acceptation qu'il n'a jamais vus. <span class="muted">Tout ou rien, sans juge LLM.</span></li>
+    <li>On relit son code et son résumé avec une grille fixe de 7 critères. <span class="muted">Chaque note cite une preuve.</span></li>
+  </ol>
+  <p class="muted">Chaque tâche est vérifiée en CI : la solution de référence passe, le point de départ échoue, et des « mutants » (la référence avec une erreur plausible) échouent aussi.</p>
+
+  <h2>Les 5 tâches</h2>
+  <p class="muted">Écrites pour ce banc, donc absentes des données d'entraînement au moment de leur création. Cliquez pour lire ce que l'agent reçoit.</p>
+  <div class="grid" id="tasks"></div>
+  <div class="panel" id="taskPanel" hidden>
+    <div class="tabs" id="taskTabs"></div>
+    <pre class="doc" id="taskDoc"></pre>
+  </div>
+
+  <h2>La grille de ressenti</h2>
+  <p class="muted">Essayez-la sur le modèle que vous utilisez. 3 = ce qu'on attend d'un développeur confirmé. Le résultat est au format de <code>results/&lt;modèle&gt;/ressenti.json</code>. Rien n'est envoyé : tout reste dans votre navigateur.</p>
+  <input id="modelName" placeholder="Nom du modèle (ex. celui que vous utilisez au quotidien)" aria-label="Nom du modèle">
+  <div id="grille"></div>
+  <div class="out">
+    <div><div class="k" style="margin:14px 0 6px">Markdown</div><textarea id="outMd" rows="11" readonly aria-label="Résultat Markdown"></textarea></div>
+    <div><div class="k" style="margin:14px 0 6px">ressenti.json</div><textarea id="outJson" rows="11" readonly aria-label="Résultat JSON"></textarea></div>
+  </div>
+  <p><button id="copyMd">Copier le Markdown</button> <button id="copyJson">Copier le JSON</button> <span class="muted" id="copied"></span></p>
+
+  <h2>La routine des 48 heures</h2>
+  <p class="muted">Un modèle sort : saisissez l'heure de l'annonce, la page calcule les échéances. Les cases cochées restent dans ce navigateur.</p>
+  <input type="datetime-local" id="release" aria-label="Date et heure de la sortie du modèle">
+  <ul class="check" id="routine"></ul>
+
+  <h2>Rapports</h2>
+  <div id="reports"></div>
+  <div id="examples"></div>
+
+  <footer>
+    Code, tâches, protocole : <a href="https://github.com/mekkiamiri/dev-model-reports">github.com/mekkiamiri/dev-model-reports</a> ·
+    <a href="slides/">Slides du talk</a> · Licence Apache 2.0 · Mekki Amiri
+  </footer>
+</main>
+<script src="data.js"></script>
+<script>
+(function () {
+  const B = window.BENCH;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs, text) => { const e = document.createElement(tag); Object.assign(e, attrs || {}); if (text !== undefined) e.textContent = text; return e; };
+  const KIND = { prd: "PRD vers code", bug: "bug à corriger", refactoring: "refactoring" };
+
+  // Afficheurs
+  const nbTests = B.tasks.reduce((s, t) => s + t.hidden_tests, 0);
+  [[B.tasks.length, "tâches"], [nbTests, "tests cachés"], [B.grille.criteria.length, "critères de ressenti"], [B.reports.length, "rapports publiés"]]
+    .forEach(([v, l]) => { const d = el("div"); d.append(el("b", {}, String(v)), el("span", {}, l)); $("readouts").append(d); });
+
+  // Tâches
+  let openTask = null;
+  function showTask(t, which) {
+    $("taskPanel").hidden = false;
+    $("taskTabs").replaceChildren();
+    const docs = [["Énoncé", t.brief]];
+    if (t.contract) docs.push(["Contrat", t.contract]);
+    docs.forEach(([name, text]) => {
+      const b = el("button", { type: "button" }, name);
+      b.setAttribute("aria-pressed", String(name === which));
+      b.onclick = () => showTask(t, name);
+      $("taskTabs").append(b);
+    });
+    $("taskDoc").textContent = (docs.find((d) => d[0] === which) || docs[0])[1];
+  }
+  B.tasks.forEach((t) => {
+    const b = el("button", { type: "button", className: "task" });
+    b.append(el("small", {}, KIND[t.kind] || t.kind), el("b", {}, t.title), el("span", {}, t.summary + " · " + t.hidden_tests + " tests cachés"));
+    b.onclick = () => {
+      document.querySelectorAll(".task").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      if (openTask === t.id) { openTask = null; $("taskPanel").hidden = true; return; }
+      openTask = t.id; b.setAttribute("aria-pressed", "true"); showTask(t, "Énoncé");
+    };
+    $("tasks").append(b);
+  });
+
+  // Grille
+  const scores = {}, evidence = {};
+  function render() {
+    const name = $("modelName").value.trim() || "modèle sans nom";
+    const lines = ["## Ressenti : " + name, "", "| Critère | Note | Preuve |", "|---|---|---|"];
+    const crit = {};
+    B.grille.criteria.forEach((c) => {
+      const s = scores[c.id] || null, ev = (evidence[c.id] || "").trim();
+      lines.push("| " + c.name + " | " + (s ? s + "/5" : "non noté") + " | " + (ev || "—").replace(/\|/g, "\\|") + " |");
+      crit[c.id] = { score: s, evidence: ev };
+    });
+    const missing = B.grille.criteria.filter((c) => scores[c.id] && !(evidence[c.id] || "").trim()).length;
+    if (missing) lines.push("", "Attention : " + missing + " note(s) sans preuve. Une note sans preuve n'est pas publiée.");
+    $("outMd").value = lines.join("\n");
+    $("outJson").value = JSON.stringify({ grille_version: B.grille.version, evaluator: null, date: new Date().toISOString().slice(0, 10), criteria: crit }, null, 2);
+  }
+  B.grille.criteria.forEach((c) => {
+    const box = el("div", { className: "crit" });
+    const head = el("div", { className: "head" });
+    head.append(el("h3", {}, c.name));
+    const row = el("div", { className: "scores", role: "group" });
+    row.setAttribute("aria-label", "Note pour " + c.name);
+    const anchor = el("div", { className: "anchor" });
+    for (let i = 1; i <= 5; i++) {
+      const b = el("button", { type: "button" }, String(i));
+      b.setAttribute("aria-pressed", "false");
+      b.onclick = () => {
+        scores[c.id] = scores[c.id] === i ? undefined : i;
+        row.querySelectorAll("button").forEach((x, j) => x.setAttribute("aria-pressed", String(scores[c.id] === j + 1)));
+        const a = c.anchors[String(scores[c.id])];
+        anchor.textContent = scores[c.id] ? (a ? scores[c.id] + " : " + a : "entre deux ancres") : "";
+        render();
+      };
+      row.append(b);
+    }
+    head.append(row);
+    const ta = el("textarea", { rows: 2, placeholder: "Preuve : tâche + extrait (fichier, ligne, phrase du résumé)" });
+    ta.setAttribute("aria-label", "Preuve pour " + c.name);
+    ta.oninput = () => { evidence[c.id] = ta.value; render(); };
+    box.append(head, el("p", {}, c.question), anchor, ta);
+    $("grille").append(box);
+  });
+  $("modelName").oninput = render;
+  render();
+  function copy(id) {
+    const v = $(id).value;
+    (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(
+      () => { $("copied").textContent = "copié"; },
+      () => { $(id).select(); document.execCommand("copy"); $("copied").textContent = "copié"; });
+    setTimeout(() => { $("copied").textContent = ""; }, 1500);
+  }
+  $("copyMd").onclick = () => copy("outMd");
+  $("copyJson").onclick = () => copy("outJson");
+
+  // Routine 48 h (mêmes étapes que ROUTINE-48H.md)
+  const STEPS = [
+    [0, "Annonce lue : identifiant exact du modèle, prix, date. Ajouter l'agent dans bench/agents.json."],
+    [2, "python3 bench/run.py --check, puis le banc complet (--repeat 3)."],
+    [8, "Relire les artefacts et les résumés, remplir la grille (une preuve par note)."],
+    [24, "Générer le rapport, relire les chiffres contre les fichiers JSON."],
+    [36, "Relecture à froid : aucune phrase plus forte que les données."],
+    [48, "Publier le rapport et le lien (page, réseaux)."],
+  ];
+  const KEY = "dmr-routine";
+  const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
+  function routine() {
+    const v = $("release").value;
+    $("routine").replaceChildren();
+    const base = v ? new Date(v) : null;
+    STEPS.forEach(([h, text], i) => {
+      const li = el("li");
+      const box = el("input", { type: "checkbox", checked: !!(saved.done || {})[i] });
+      box.setAttribute("aria-label", "Étape faite : " + text);
+      box.onchange = () => { saved.done = saved.done || {}; saved.done[i] = box.checked; localStorage.setItem(KEY, JSON.stringify(saved)); };
+      const when = base ? new Date(base.getTime() + h * 3600e3).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "H+" + h;
+      li.append(box, el("time", {}, when), el("span", {}, text));
+      $("routine").append(li);
+    });
+    saved.release = v; localStorage.setItem(KEY, JSON.stringify(saved));
+  }
+  if (saved.release) $("release").value = saved.release;
+  $("release").onchange = routine;
+  routine();
+
+  // Rapports : uniquement de vrais modèles ; les exemples sont listés à part
+  if (!B.reports.length) {
+    $("reports").append(el("div", { className: "empty" }, "Aucun rapport pour l'instant : premier rapport à la prochaine sortie de modèle."));
+  } else {
+    const ul = el("ul");
+    B.reports.forEach((r) => { const li = el("li"); li.append(el("a", { href: r.href }, r.label), document.createTextNode(" · " + r.date)); ul.append(li); });
+    $("reports").append(ul);
+  }
+  if (B.examples.length) {
+    const p = el("p", { className: "muted" }, "Pour voir le format : ");
+    B.examples.forEach((r, i) => { if (i) p.append(", "); p.append(el("a", { href: r.href }, "exemple généré par un faux agent (pas un vrai modèle)")); });
+    $("examples").append(p);
+  }
+})();
+</script>
+</body>
+</html>
