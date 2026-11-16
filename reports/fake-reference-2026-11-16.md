@@ -6,7 +6,7 @@
 - Tâches réussies (tout ou rien, tests cachés, tous les passages) : **5/5** · passages réussis : 5/5
 - Durée totale de l'agent (moyenne par tâche) : 0.1 s · coût : non fourni
 - Passages par tâche : 1 · lot de tâches : public
-- Version du banc : 3443389-dirty · outil : non relevée
+- Version du banc : 338e5d1 · outil : non relevée
 
 ## Résultats par tâche
 
