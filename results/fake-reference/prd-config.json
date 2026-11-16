@@ -6,13 +6,13 @@
   "task": "prd-config",
   "kind": "prd",
   "title": "Configuration en couches avec variables",
-  "task_fingerprint": "503ae5eeaeda",
-  "bench_commit": "541bb74",
-  "date": "2026-11-16T00:05:07+00:00",
+  "task_fingerprint": "ee64377b6436",
+  "bench_commit": "d01b3d4",
+  "date": "2026-11-16T00:07:55+00:00",
   "repeat": 1,
   "passed_runs": 1,
   "passed": true,
-  "mean_agent_duration_s": 0.02,
+  "mean_agent_duration_s": 0.03,
   "total_cost_usd": null,
   "runs": [
     {
@@ -25,8 +25,8 @@
       "compile_errors": null,
       "agent_exit_code": 0,
       "agent_timed_out": false,
-      "agent_duration_s": 0.02,
-      "grading_duration_s": 0.38,
+      "agent_duration_s": 0.03,
+      "grading_duration_s": 0.41,
       "tokens": null,
       "cost_usd": null,
       "turns": null
