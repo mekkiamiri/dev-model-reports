@@ -31,7 +31,6 @@ def tasks() -> list[dict]:
         t = json.loads(task_json.read_text(encoding="utf-8"))
         ws = task_json.parent / "workspace"
         brief = next((read(ws / n) for n in ("PRD.md", "ISSUE.md", "REFACTOR.md") if (ws / n).exists()), "")
-        hidden = "".join(read(p) for p in (task_json.parent / "hidden").glob("*.java"))
         out.append({
             "id": t["id"],
             "kind": t["kind"],
@@ -39,7 +38,7 @@ def tasks() -> list[dict]:
             "summary": t["summary"],
             "brief": brief,
             "contract": read(ws / "CONTRACT.md"),
-            "hidden_tests": hidden.count("Check.test("),
+            "hidden_tests": t["hidden_tests"],
             "mutants": len([p for p in (task_json.parent / "mutants").glob("*") if p.is_dir()]),
         })
     return out

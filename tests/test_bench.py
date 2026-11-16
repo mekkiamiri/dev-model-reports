@@ -35,7 +35,7 @@ class TasksTest(unittest.TestCase):
         self.assertEqual(["bug", "prd", "prd", "prd", "refactoring"], kinds)
         for t in tasks:
             d = t["dir"]
-            for key in ("id", "kind", "title", "summary"):
+            for key in ("id", "kind", "title", "summary", "hidden_tests"):
                 self.assertIn(key, t)
             self.assertEqual(d.name, t["id"])
             self.assertTrue((d / "workspace" / "TASK.md").exists(), t["id"])
@@ -103,6 +103,7 @@ class RunnerTest(unittest.TestCase):
             self.assertTrue(r["passed"], r)
             self.assertEqual("ok", r["runs"][0]["stage"])
             self.assertEqual(r["runs"][0]["tests_passed"], r["runs"][0]["tests_total"])
+            self.assertEqual(t["hidden_tests"], r["runs"][0]["tests_total"], "hidden_tests de task.json à jour")
             self.assertIsNone(r["runs"][0]["tokens"])
             self.assertIsNone(r["total_cost_usd"])
             self.assertTrue(r["example"])

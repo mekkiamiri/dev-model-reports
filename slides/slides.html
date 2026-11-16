@@ -1,0 +1,319 @@
+<!-- Slides du talk « Ce que les benchmarks ne disent pas : N modèles testés » (Conférence, 45 min)
+     Construire : python3 <kit>/build_deck.py slides/slides.html docs/slides/index.html "Ce que les benchmarks ne disent pas"
+     Règle : aucun résultat de modèle avant mesure ; les emplacements sont marqués « à mesurer ».
+     Plan : 0-6 décalage · 6-14 le banc · 14-34 résultats · 34-41 erreurs de méthode · 41-45 chez vous. -->
+
+<!-- 1. Titre -->
+<section class="slide">
+  {{RULER}}
+  <div class="pad" style="top:250px">
+    <div class="k reveal">Conférence · 45 min</div>
+    <h1 class="reveal" style="margin-top:40px">Ce que les benchmarks<br><em>ne disent pas</em></h1>
+  </div>
+  <div class="readouts reveal" style="position:absolute;left:120px;bottom:130px"><div><b>5</b><span>tâches Java</span></div><div><b>N</b><span>modèles</span></div><div><b>48 h</b><span>après la sortie</span></div></div>
+  <div style="position:absolute;right:120px;bottom:140px;text-align:right" class="reveal"><h3>Mekki Amiri</h3><p class="muted" style="font-size:24px;margin:8px 0 0">Tech Lead · architecte système</p></div>
+  <aside class="notes">N sera remplacé par le nombre de modèles réellement testés le jour du talk. Pas de soumission sans au moins 3 rapports publiés.</aside>
+</section>
+
+<!-- 2. Le score record -->
+<section class="slide">
+  <div class="pad" style="top:200px">
+    <div class="k reveal">Chaque sortie</div>
+    <div class="big reveal" style="margin-top:30px">93,77 %</div>
+    <p class="muted reveal" style="margin-top:30px">Meilleur score de Vibe Code Bench (vals.ai, page mise à jour le 11/11/2026).</p>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Vibe Code Bench : construire une appli web à partir d'une spécification, noté par un agent qui clique dans l'appli. Même la page dit qu'aucun modèle ne livre à coup sûr une appli qui passe tous les tests. Revérifier le chiffre la veille du talk.</aside>
+</section>
+
+<!-- 3. Le décalage -->
+<section class="slide">
+  <div class="pad" style="top:260px">
+    <div class="k reveal">Puis on l'essaie sur son code</div>
+    <h2 class="reveal" style="margin-top:30px">Plus lent. Plus bavard.<br><em>Meilleur ici, pire là.</em></h2>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 4. Exemple réel (à mesurer) -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">Un exemple réel</div>
+    <h2 class="reveal" style="margin-top:30px">Score annoncé <em>contre</em> score mesuré</h2>
+    <div class="todo reveal" style="margin-top:50px">à mesurer · tiré du premier rapport publié</div>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Choisir l'écart le plus parlant parmi les rapports publiés. Montrer le résumé de l'agent à côté du résultat des tests cachés.</aside>
+</section>
+
+<!-- 5. 90-99 % -->
+<section class="slide">
+  <div class="pad" style="top:180px">
+    <div class="k reveal">Zero2Repo · arXiv 2609.38269</div>
+    <div class="big reveal" style="margin-top:30px">90–99 %</div>
+    <p class="reveal" style="margin-top:30px">des tests cachés passés par les soumissions <em>ratées</em>.</p>
+    <p class="muted reveal">La plupart des échecs : une règle rare du PRD, oubliée.</p>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Article de septembre 2026 (v3 du 18 octobre). 11 tâches, le meilleur agent en réussit 10. D'où le tout ou rien, et des PRD avec des règles rares exprès.</aside>
+</section>
+
+<!-- 6. La question -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">La question</div>
+    <h2 class="reveal" style="margin-top:30px">Ce modèle, sur <em>mon</em> travail,<br>vaut-il le changement ?</h2>
+    <p class="muted reveal" style="margin-top:50px">Mesuré à chaque sortie, de la même façon, publié en 48 heures.</p>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 7. Partie 1 -->
+<section class="slide">
+  {{RULER}}
+  <div class="pad" style="top:320px"><div class="k reveal">Partie 1</div><h1 class="reveal" style="margin-top:30px">Le <em>banc</em></h1></div>
+  {{CHROME}}
+</section>
+
+<!-- 8. Les tâches -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">5 tâches neuves, en Java</div>
+    <div class="readouts reveal" style="margin-top:60px"><div><b>3</b><span>PRD vers code</span></div><div><b>1</b><span>bug à corriger</span></div><div><b>1</b><span>refactoring</span></div></div>
+    <p class="reveal" style="margin-top:60px">Facture, horaires d'ouverture, configuration en couches.<br><span class="muted">Écrites pour le banc : absentes des données d'entraînement à leur création.</span></p>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 9. Tests cachés -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Comme Zero2Repo</div>
+    <ul class="steps reveal">
+      <li data-n="01">Un dossier neuf : tâche, PRD, contrat <span class="muted">· rien d'autre</span></li>
+      <li data-n="02">Des tests d'acceptation jamais vus <span class="muted">· appliqués après</span></li>
+      <li data-n="03">Tout ou rien <span class="muted">· aucun juge LLM</span></li>
+    </ul>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Démo : python3 bench/run.py --agent fake-noop puis fake-reference. Montrer le dossier de travail : pas de dossier hidden.</aside>
+</section>
+
+<!-- 10. Une règle rare -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Règle rare · prd-facture</div>
+    <h3 class="reveal" style="margin:30px 0 40px">« La TVA se calcule par taux, pas par ligne. »</h3>
+    <pre class="code reveal">A;1;0.05;10      <span class="c"># TVA de la ligne : 0,005 → 0,01</span>
+B;1;0.05;10
+C;1;0.05;10
+<span class="c">par ligne :</span>  0,01 + 0,01 + 0,01 = 0,03
+<span class="h">par taux :</span>   0,15 × 10 % = 0,015 → <span class="h">0,02</span></pre>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Un centime d'écart, une tâche ratée. Exactement le genre d'oubli que Zero2Repo décrit.</aside>
+</section>
+
+<!-- 11. Le piège du bug -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Piège · bug-pagination</div>
+    <pre class="code reveal" style="margin-top:40px"><span class="c">// Ticket : 20 éléments, 10 par page → « Page 1 sur 3 »</span>
+return items.size() / pageSize + 1;               <span class="c">// le bug</span>
+return (items.size() + pageSize - 1) / pageSize;  <span class="c">// la correction évidente</span>
+<span class="c">// Javadoc : « une liste vide a une page, vide »</span>
+return <span class="h">Math.max(1,</span> (items.size() + pageSize - 1) / pageSize<span class="h">)</span>;</pre>
+    <h3 class="reveal" style="margin-top:50px">L'agent a-t-il <em>lancé</em> les tests existants ?</h3>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 12. Prouver que la tâche mesure -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Chaque tâche est vérifiée en CI</div>
+    <div class="readouts reveal" style="margin-top:60px"><div><b>5/5</b><span>références passent</span></div><div><b>5/5</b><span>départs échouent</span></div><div><b>6/6</b><span>mutants rejetés</span></div></div>
+    <p class="muted reveal" style="margin-top:50px">Mutant : la référence avec une erreur plausible (arrondi bancaire, TVA par ligne…).</p>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Ces chiffres-là sont mesurés : python3 bench/run.py --check. Ce sont les seuls chiffres du banc à ce stade.</aside>
+</section>
+
+<!-- 13. La grille -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Grille de ressenti · 7 critères fixes</div>
+    <div class="cols reveal" style="margin-top:50px">
+      <div class="panel"><p>Lisibilité<br>Conventions<br>Périmètre<br>Questions à bon escient</p></div>
+      <div class="panel"><p><em>Honnêteté</em> sur ce qui n'est pas fait<br>Vérification par soi-même<br>Économie de moyens</p></div>
+    </div>
+    <p class="muted reveal" style="margin-top:40px">Notes de 1 à 5. Une preuve par note, sinon pas publiée.</p>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Honnêteté : on compare le résumé final de l'agent au résultat des tests cachés. C'est le critère que les benchmarks ne voient jamais.</aside>
+</section>
+
+<!-- 14. Coût et temps -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Réussite, mais aussi coût et temps</div>
+    <pre class="code reveal" style="margin-top:40px">claude -p "{prompt}" --model claude-opus-5-5 \
+  --output-format json --permission-mode acceptEdits
+<span class="c"># → total_cost_usd, usage.*_tokens, num_turns, result</span>
+python3 bench/run.py --agent claude-opus-5-5 --repeat 3</pre>
+    <p class="muted reveal" style="margin-top:40px">N'importe quelle CLI d'agent : la commande est configurable.</p>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 15. La routine -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">La routine des 48 heures</div>
+    <ul class="steps reveal">
+      <li data-n="H+2" style="padding-left:150px">Faire tourner <span class="muted">· 5 tâches × 3 passages</span></li>
+      <li data-n="H+8" style="padding-left:150px">Noter le ressenti <span class="muted">· avant de voir les scores</span></li>
+      <li data-n="H+48" style="padding-left:150px">Publier <span class="muted">· chiffres relus contre les fichiers</span></li>
+    </ul>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 16. Partie 2 -->
+<section class="slide">
+  {{RULER}}
+  <div class="pad" style="top:320px"><div class="k reveal">Partie 2</div><h1 class="reveal" style="margin-top:30px">Les <em>résultats</em></h1></div>
+  {{CHROME}}
+</section>
+
+<!-- 17. Tableau des résultats (à mesurer) -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Modèle par modèle</div>
+    <table class="m reveal" style="margin-top:40px">
+      <tr><th>Modèle</th><th>Tâches</th><th>Coût</th><th>Durée</th><th>Honnêteté</th></tr>
+      <tr><td>Modèle 1</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+      <tr><td>Modèle 2</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+      <tr><td>Modèle 3</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+    </table>
+    <div class="todo reveal" style="margin-top:36px">à mesurer · un rapport par sortie de modèle</div>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 18. Score annoncé contre mesuré -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">Où ça diverge</div>
+    <h2 class="reveal" style="margin-top:30px">Le classement public <em>contre</em> le nôtre</h2>
+    <div class="todo reveal" style="margin-top:50px">à mesurer</div>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 19. Ce qui a surpris -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">Ce qui a surpris</div>
+    <h2 class="reveal" style="margin-top:30px">Les échecs, <em>montrés tels quels</em></h2>
+    <div class="todo reveal" style="margin-top:50px">à mesurer · 3 extraits réels</div>
+  </div>
+  {{CHROME}}
+  <aside class="notes">Pour chaque extrait : le test caché qui casse, la règle du PRD, et ce que l'agent a dit dans son résumé.</aside>
+</section>
+
+<!-- 20. Le ressenti -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">Le ressenti</div>
+    <h2 class="reveal" style="margin-top:30px">Même score,<br><em>pas le même collègue</em></h2>
+    <div class="todo reveal" style="margin-top:50px">à mesurer · grilles remplies</div>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 21. Le coût -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">Le coût d'une tâche réussie</div>
+    <h2 class="reveal" style="margin-top:30px">Pas le prix du token :<br><em>le prix du résultat</em></h2>
+    <div class="todo reveal" style="margin-top:50px">à mesurer</div>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 22. Partie 3 -->
+<section class="slide">
+  {{RULER}}
+  <div class="pad" style="top:320px"><div class="k reveal">Partie 3</div><h1 class="reveal" style="margin-top:30px">Mes erreurs<br>de <em>méthode</em></h1></div>
+  {{CHROME}}
+</section>
+
+<!-- 23. Limites connues -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Connues dès le départ</div>
+    <ul class="steps reveal">
+      <li data-n="01">Isolation <span class="muted">· un agent peut chercher hors du dossier</span></li>
+      <li data-n="02">Contamination <span class="muted">· les tests publics finiront dans l'entraînement</span></li>
+      <li data-n="03">Le harnais compte <span class="muted">· le modèle n'est jamais « nu »</span></li>
+    </ul>
+    <div class="todo reveal" style="margin-top:30px">à raconter · les erreurs faites en route</div>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 24. Un passage ne suffit pas -->
+<section class="slide">
+  <div class="pad" style="top:240px">
+    <div class="k reveal">Variance</div>
+    <h2 class="reveal" style="margin-top:30px">Un passage, c'est <em>une anecdote</em></h2>
+    <p class="muted reveal" style="margin-top:40px">D'où « réussie k/3 » dans chaque rapport.</p>
+    <div class="todo reveal" style="margin-top:30px">à mesurer · écarts entre passages</div>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 25. Partie 4 -->
+<section class="slide">
+  {{RULER}}
+  <div class="pad" style="top:320px"><div class="k reveal">Partie 4</div><h1 class="reveal" style="margin-top:30px">Chez vous,<br><em>en une soirée</em></h1></div>
+  {{CHROME}}
+</section>
+
+<!-- 26. Les commandes -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Le banc est public</div>
+    <pre class="code reveal" style="margin-top:40px">git clone https://github.com/mekkiamiri/dev-model-reports
+python3 bench/run.py --check
+python3 bench/run.py --agent &lt;modèle&gt; --repeat 3
+python3 bench/report.py --model &lt;modèle&gt;</pre>
+    <p class="muted reveal" style="margin-top:40px">Python et un JDK. Aucune dépendance.</p>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 27. Vos tâches -->
+<section class="slide">
+  <div class="pad">
+    <div class="k reveal">Remplacez les tâches par les vôtres</div>
+    <ul class="steps reveal">
+      <li data-n="01">Un PRD de votre domaine <span class="muted">· avec une règle rare</span></li>
+      <li data-n="02">Des tests cachés <span class="muted">· et une solution qui les passe</span></li>
+      <li data-n="03">Un mutant <span class="muted">· pour prouver que les tests mordent</span></li>
+    </ul>
+  </div>
+  {{CHROME}}
+</section>
+
+<!-- 28. Fin -->
+<section class="slide">
+  {{RULER}}
+  <div class="pad" style="top:300px">
+    <h2 class="reveal">Le score, c'est leur banc.<br><em>Mesurez sur le vôtre.</em></h2>
+    <p class="reveal" style="margin-top:50px">mekkiamiri.github.io/dev-model-reports</p>
+    <p class="muted reveal">Questions ?</p>
+  </div>
+  {{CHROME}}
+</section>
