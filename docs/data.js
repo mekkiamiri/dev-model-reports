@@ -48,8 +48,8 @@ window.BENCH = {
    "summary": "Extraire trois règles de tarification d'une méthode à branches, sans changer un centime du résultat.",
    "brief": "# Refactoring demandé\n\n`PriceService.price` mélange trois politiques de prix dans une seule méthode. On veut pouvoir ajouter un type de client sans toucher aux autres.\n\n## Cible (contrat)\n\nPaquet `com.example.pricing` :\n\n```java\npublic interface PricingRule {\n    BigDecimal price(int quantity, BigDecimal unitPrice, boolean firstOrder);\n}\npublic class StandardPricing implements PricingRule { public StandardPricing(); ... }\npublic class PremiumPricing implements PricingRule { public PremiumPricing(); ... }\npublic class WholesalePricing implements PricingRule { public WholesalePricing(); ... }\n```\n\n- Pour une quantité strictement positive, chaque règle rend exactement ce que `PriceService` rendait pour ce type de client (arrondi, plancher à zéro et exceptions compris).\n- `PriceService.price(String, int, BigDecimal, boolean)` garde sa signature et son comportement, mais ne contient plus aucune règle de calcul : il choisit la règle et lui délègue. Plus de chaîne de `if / else` sur le type de client.\n- Le fichier `PriceService.java` reste court (40 lignes non vides au plus).\n",
    "contract": "",
-   "hidden_tests": 10,
-   "mutants": 1
+   "hidden_tests": 18,
+   "mutants": 5
   }
  ],
  "grille": {

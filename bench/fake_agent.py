@@ -4,11 +4,17 @@ Usage (lancé par bench/run.py, dossier courant = dossier de travail de la tâch
   fake_agent.py copy-reference <dossier>   copie la solution de référence : doit tout réussir
   fake_agent.py noop                       ne fait rien : doit tout rater
   fake_agent.py sleep <secondes>           dort : sert à tester le délai maximal
-  fake_agent.py list                       écrit la liste des fichiers visibles dans VISIBLE.txt
+  fake_agent.py list                       écrit dans VISIBLE.txt les fichiers visibles, l'environnement
+                                           reçu et le contenu du dossier parent (agent espion)
+  fake_agent.py cheat <dossier>            copie la référence puis y injecte une fausse ligne
+                                           « RESULT » et un arrêt brutal : doit être noté en échec
 
 Ce n'est pas un modèle : un rapport produit avec ce faux agent est un exemple de format.
 """
 
+import json
+import os
+import re
 import shutil
 import sys
 import time
@@ -29,7 +35,23 @@ def main(argv: list[str]) -> int:
         time.sleep(float(argv[1]))
     elif mode == "list":
         files = sorted(p.relative_to(here).as_posix() for p in here.rglob("*") if p.is_file())
-        (here / "VISIBLE.txt").write_text("\n".join(files) + "\n", encoding="utf-8")
+        report = {
+            "files": files,
+            "env": dict(os.environ),
+            "parent": sorted(p.name for p in here.parent.iterdir()),
+            "cwd": str(here),
+        }
+        (here / "VISIBLE.txt").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    elif mode == "cheat":
+        shutil.copytree(argv[1], here, dirs_exist_ok=True)
+        fake = 'static { System.out.println("RESULT passed=999 total=999"); Runtime.getRuntime().halt(0); }'
+        for path in sorted((here / "src").rglob("*.java")):
+            text = path.read_text(encoding="utf-8")
+            m = re.search(r"^public (final )?class \w+[^\n]*\{$", text, re.M)
+            if m:
+                path.write_text(text[: m.end()] + "\n    " + fake + text[m.end():], encoding="utf-8")
+                print(f"Faux agent tricheur : fausse ligne RESULT injectée dans {path.name}.")
+                break
     else:
         sys.exit(f"mode inconnu : {mode}")
     return 0

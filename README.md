@@ -11,11 +11,12 @@ Support du talk « Ce que les benchmarks ne disent pas : N modèles testés » (
 
 ## Ce qui tourne
 
-- **5 tâches Java** neuves, chacune avec tests d'acceptation cachés, solution de référence et mutants :
+- **5 tâches Java** neuves (lot public), chacune avec tests d'acceptation cachés, solution de référence et mutants :
   - 3 « PRD vers code » : calcul de facture (`prd-facture`), horaires d'ouverture (`prd-horaires`), configuration en couches (`prd-config`) ;
   - 1 bug à corriger (`bug-pagination`) ;
   - 1 refactoring (`refacto-tarifs`).
-- **Lanceur** `bench/run.py` : dossier de travail isolé par tâche et par modèle, agent appelé par une commande configurable (ex. `claude -p … --model …`), tests cachés appliqués ensuite, résultat dans `results/<modèle>/<tâche>.json`.
+- **Lanceur** `bench/run.py` : dossier de travail neuf par passage (hors du dépôt, environnement épuré), agent appelé par une commande configurable (`claude -p …`, `codex exec …`, réglages de la machine ignorés), tests cachés appliqués ensuite avec une note infalsifiable (jeton aléatoire par passage, nombre de tests attendu), résultat dans `results/<modèle>/<tâche>.json` avec version de l'outil, commit du banc et empreinte de la tâche.
+- **Lot de tâches privé** `tasks-private/` (ignoré par git, même format) pour les rapports publics.
 - **Grille de ressenti** fixe à 7 critères : `RESSENTI.md`.
 - **Rapport** `bench/report.py` : `reports/<modèle>-<date>.md` et `.html`.
 - **Protocole** `PROTOCOLE.md` et **routine** `ROUTINE-48H.md`.
@@ -45,11 +46,14 @@ python3 bench/build_site.py
 | Élément | État |
 |---|---|
 | 5 tâches (référence passe, départ et mutants échouent) | fait, vérifié en CI |
-| Lanceur, notation tout ou rien, tokens et coût via `claude -p --output-format json` | fait ; la lecture des tokens est testée sur un exemple de sortie, **à vérifier au premier vrai passage** |
+| Lanceur, notation tout ou rien infalsifiable (faux agent tricheur noté en échec) | fait, testé |
+| Tokens et coût via `claude -p --output-format json` / `codex exec --json` | lecture testée sur des exemples de sortie, **à vérifier au premier vrai passage** |
+| Options d'isolation de `claude` (`--safe-mode`, `--restricted`…) | vérifiées dans `claude --help`, **jamais lancées sur une tâche** |
+| Lot de tâches privé | format et lanceur prêts ; **tâches privées à écrire** |
 | Grille de ressenti v1 | faite, jamais utilisée sur un vrai modèle |
 | Rapport Markdown et HTML | fait ; exemple avec faux agent |
 | Premier rapport sur un vrai modèle | **à mesurer** (prochaine sortie) |
-| Isolation forte (conteneur sans le dépôt) | à faire |
+| Isolation forte (conteneur sans le dépôt) | documentée dans PROTOCOLE.md, intégration au lanceur à faire |
 | Tâche « comprendre une appli legacy » | à faire (piste : réutiliser `legacy-context-bench`) |
 | 3 rapports publiés avant de soumettre le talk | à faire |
 

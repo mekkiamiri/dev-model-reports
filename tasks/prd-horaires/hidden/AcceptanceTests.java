@@ -24,6 +24,7 @@ public class AcceptanceTests {
     }
 
     public static void main(String[] args) {
+        Check.start();
         Check.test("ouvert à l'heure d'ouverture", () -> open(SHOP, "2026-11-16T09:00", true));
         Check.test("fermé juste avant", () -> open(SHOP, "2026-11-16T08:59", false));
         Check.test("fermé à l'heure de fin", () -> open(SHOP, "2026-11-16T12:00", false));

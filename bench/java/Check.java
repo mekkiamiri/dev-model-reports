@@ -1,3 +1,7 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -5,18 +9,37 @@ import java.util.Objects;
 /**
  * Mini-harnais de tests sans dépendance (pas de JUnit) : javac et java suffisent.
  * Chaque test est indépendant ; la dernière ligne imprimée est
- * « RESULT passed=X total=Y », lue par bench/run.py.
+ * « RESULT <jeton> passed=X total=Y », lue par bench/run.py.
+ *
+ * Le jeton est tiré au hasard par le lanceur à chaque passage et lu sur l'entrée
+ * standard au chargement de cette classe, avant que le code testé ne s'exécute :
+ * un code qui imprime lui-même une fausse ligne RESULT ne le connaît pas.
  */
 public final class Check {
     private static int passed;
     private static int total;
     private static final List<String> failures = new ArrayList<>();
+    private static final String TOKEN = readToken();
 
     private Check() {}
+
+    private static String readToken() {
+        try {
+            String line = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)).readLine();
+            return line == null ? "sans-jeton" : line.trim();
+        } catch (IOException e) {
+            return "sans-jeton";
+        }
+    }
 
     @FunctionalInterface
     public interface Body {
         void run() throws Exception;
+    }
+
+    /** À appeler en premier dans main : lit le jeton avant tout code de l'agent. */
+    public static void start() {
+        // le chargement de la classe suffit (TOKEN est initialisé ici)
     }
 
     public static void test(String name, Body body) {
@@ -57,7 +80,7 @@ public final class Check {
         for (String f : failures) {
             System.out.println("ECHEC " + f);
         }
-        System.out.println("RESULT passed=" + passed + " total=" + total);
+        System.out.println("RESULT " + TOKEN + " passed=" + passed + " total=" + total);
         System.exit(passed == total ? 0 : 1);
     }
 }

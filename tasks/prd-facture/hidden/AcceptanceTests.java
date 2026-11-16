@@ -22,6 +22,7 @@ public class AcceptanceTests {
     }
 
     public static void main(String[] args) {
+        Check.start();
         Check.test("ligne simple", () -> {
             Invoice inv = run("A;2;10.00;20\n");
             totals(inv, "20.00", "4.00", "24.00");

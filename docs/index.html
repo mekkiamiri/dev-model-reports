@@ -72,10 +72,10 @@
     <li>Quand il a fini, on applique des tests d'acceptation qu'il n'a jamais vus. <span class="muted">Tout ou rien, sans juge LLM.</span></li>
     <li>On relit son code et son résumé avec une grille fixe de 7 critères. <span class="muted">Chaque note cite une preuve.</span></li>
   </ol>
-  <p class="muted">Chaque tâche est vérifiée en CI : la solution de référence passe, le point de départ échoue, et des « mutants » (la référence avec une erreur plausible) échouent aussi.</p>
+  <p class="muted">Chaque tâche est vérifiée en CI : la solution de référence passe, le point de départ échoue, et des « mutants » (la référence avec une erreur plausible) échouent aussi. La note ne se falsifie pas : un faux agent qui imprime « tous les tests passent » est noté en échec.</p>
 
   <h2>Les 5 tâches</h2>
-  <p class="muted">Écrites pour ce banc, donc absentes des données d'entraînement au moment de leur création. Cliquez pour lire ce que l'agent reçoit.</p>
+  <p class="muted">Écrites en novembre 2026 pour ce banc. Ce lot public montre la méthode ; ses tests seront connus, donc les rapports s'appuient aussi sur un lot privé, même format. Cliquez pour lire ce que l'agent reçoit.</p>
   <div class="grid" id="tasks"></div>
   <div class="panel" id="taskPanel" hidden>
     <div class="tabs" id="taskTabs"></div>

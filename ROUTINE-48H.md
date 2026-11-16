@@ -9,10 +9,12 @@
 - [ ] Vérifier le budget : coût estimé d'un passage complet × 3.
 
 ## H+2 : faire tourner
-- [ ] `git pull` ; `python3 bench/run.py --check` (les tâches sont toujours valides).
+- [ ] `git pull` ; `git status` propre (sinon le résultat portera `-dirty`).
+- [ ] `python3 bench/run.py --check` et `python3 bench/run.py --check --tasks-dir tasks-private` (les deux lots sont valides).
 - [ ] `python3 -m unittest discover -s tests` (le lanceur est vert).
 - [ ] Un essai sur une tâche : `python3 bench/run.py --agent <modèle> --tasks bug-pagination` ; vérifier que tokens et coût remontent.
-- [ ] Banc complet : `python3 bench/run.py --agent <modèle> --repeat 3`.
+- [ ] Banc complet, de préférence en conteneur sans le dépôt (PROTOCOLE.md) : `python3 bench/run.py --agent <modèle> --repeat 3`, puis la même chose avec `--tasks-dir tasks-private`.
+- [ ] Vérifier dans les résultats : `tool_version` relevée, `bench_commit` sans `-dirty`.
 - [ ] Si un passage casse pour une raison extérieure au modèle (réseau, quota) : le relancer et le noter dans le rapport.
 
 ## H+8 : le ressenti

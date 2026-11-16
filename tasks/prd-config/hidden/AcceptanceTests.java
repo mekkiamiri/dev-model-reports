@@ -15,6 +15,7 @@ public class AcceptanceTests {
     }
 
     public static void main(String[] args) {
+        Check.start();
         Check.test("une couche simple", () -> Check.eq(Map.of("a", "1", "b", "deux"), r("a=1\nb = deux\n")));
         Check.test("espaces autour de la clé et de la valeur", () -> Check.eq(Map.of("cle", "valeur avec espaces"), r("   cle   =   valeur avec espaces   ")));
         Check.test("seul le premier = sépare", () -> Check.eq(Map.of("url", "a=b=c"), r("url = a=b=c")));

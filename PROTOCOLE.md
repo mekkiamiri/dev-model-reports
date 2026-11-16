@@ -30,11 +30,36 @@ Chaque tâche a :
 
 ## Déroulé d'un passage
 
-1. Le lanceur copie `workspace/` dans un dossier temporaire neuf, hors du dépôt.
-2. Il lance la commande de l'agent (fichier `bench/agents.json`, modèle dans `bench/agents.example.json`) dans ce dossier, avec la même consigne pour tous (`PROMPT` dans `bench/run.py`). Le banc est non interactif : l'agent doit écrire ses hypothèses dans son résumé au lieu de poser des questions.
-3. À la fin (ou au délai maximal), il copie `src/` produit par l'agent dans un **autre** dossier temporaire, y ajoute les tests cachés, compile et exécute.
-4. Réussite = compilation + tous les tests cachés passent (tout ou rien). On enregistre aussi les tests passés, la durée, les tokens, le coût et le nombre de tours si la commande les fournit (`claude -p --output-format json` les fournit ; leur format est à revérifier au premier vrai passage).
-5. Le code produit et le résumé final sont gardés (`results/<modèle>/artifacts/`, `results/<modèle>/transcripts/`) pour la grille de ressenti.
+1. Le lanceur crée un dossier temporaire neuf, au nom aléatoire, hors du dépôt, et n'y copie que `workspace/`. Aucun dossier voisin ne vient du banc : ni autre tâche, ni autre passage, ni `results/`.
+2. Il lance la commande de l'agent (fichier `bench/agents.json`, modèle dans `bench/agents.example.json`) dans ce dossier, avec la même consigne pour tous (`PROMPT` dans `bench/run.py`) et un **environnement épuré** : liste blanche (`PATH`, `HOME`, `LANG`…, plus les clés d'API demandées par `env_passthrough`), sans `OLDPWD` ni chemin du dépôt, `PWD` = dossier de travail. La commande tourne dans son propre groupe de processus, tué en entier au délai maximal.
+3. Le banc est non interactif : l'agent doit écrire ses hypothèses dans son résumé au lieu de poser des questions.
+4. À la fin, le lanceur refuse d'abord le code « suspect » (appel au harnais `Check`, référence aux tests cachés, réflexion sur des membres privés, lecture de l'entrée standard). Puis il copie `src/` dans un **autre** dossier temporaire, y ajoute les tests cachés, compile et exécute.
+5. **Note infalsifiable** : le lanceur tire un jeton aléatoire par passage et le donne au harnais sur l'entrée standard, lue avant tout code de l'agent. Réussite seulement si la **dernière** ligne de sortie est `RESULT <jeton> passed=N total=N`, avec N égal au nombre de tests déclaré dans `task.json`, et si le processus sort avec le code 0. Un code qui imprime une fausse ligne `RESULT` puis s'arrête est noté en échec (test `test_cheating_agent_is_graded_as_failure`, faux agent `fake-cheat`).
+6. On enregistre aussi les tests passés à chaque passage, la durée, les tokens, le coût, le nombre de tours et l'erreur éventuelle de l'agent si la commande les fournit (`claude -p --output-format json` : `total_cost_usd`, `usage`, `num_turns`, `is_error`, `subtype` ; `codex exec --json` : tokens des événements `turn.completed`, pas de coût). Le format réel est à revérifier au premier vrai passage.
+7. Le code produit et le résumé final sont gardés (`results/<modèle>/artifacts/`, `results/<modèle>/transcripts/`) pour la grille de ressenti.
+
+## Reproductibilité
+
+- **Sans les réglages de la machine.** Pour Claude Code, la configuration d'exemple utilise des options vérifiées dans `claude --help` (version 2.1.325) : `--safe-mode` (CLAUDE.md, skills, plugins installés, hooks, serveurs MCP, commandes et agents personnalisés désactivés), `--strict-mcp-config` (aucun serveur MCP hors `--mcp-config`), `--disable-slash-commands`, `--no-session-persistence`, et `--restricted` avec `--tools` (outils de fichiers confinés au dossier de travail). Commandes autorisées : `javac -d out …` et `java -cp out …` seulement (ni `find`, ni `java` libre). Pour Codex CLI : `--ignore-user-config`, `--ignore-rules`, `--ephemeral`, `--sandbox workspace-write`.
+- Chaque résultat note la **version de l'outil** (`version_cmd`, par exemple `claude --version`) et le **commit du banc** (`git describe --dirty` : un suffixe `-dirty` signale des modifications non commitées ; un rapport publié ne doit pas en avoir).
+- **Empreinte** de chaque tâche : SHA-256 de `workspace/`, `hidden/`, `reference/` et du harnais `Check.java` (sans `task.json` ni fichiers parasites), affichée dans le rapport.
+
+## Exécution recommandée pour un rapport public
+
+L'isolation du lanceur réduit les portes, elle ne remplace pas un vrai bac à sable : l'agent tourne avec les droits de l'utilisateur, et un `java -cp out …` exécute le code qu'il a écrit. Pour un rapport public :
+
+- lancer chaque passage dans un **conteneur** (ou sous un **utilisateur dédié**) qui ne voit pas le dépôt : seul le dossier de travail est monté, les tests cachés restent sur l'hôte et ne servent qu'à la notation ;
+- par exemple : `docker run --rm -v "$WORK:/work" -w /work -e ANTHROPIC_API_KEY <image avec JDK et CLI> claude -p …`, la notation restant faite par `bench/run.py` sur l'hôte (intégration à écrire : v1) ;
+- utiliser le **lot de tâches privé**.
+
+## Lot de tâches privé
+
+Les tâches de `tasks/` sont publiques : leurs tests cachés seront connus, et pourront finir dans des données d'entraînement. Les rapports publics s'appuient donc aussi sur un lot privé :
+
+- dossier `tasks-private/`, **ignoré par git**, même format que `tasks/` (task.json, workspace, hidden, reference, mutants) ;
+- `python3 bench/run.py --check --tasks-dir tasks-private`, puis `--agent <modèle> --tasks-dir tasks-private` ;
+- le rapport indique le lot utilisé et **ne publie pas le détail des échecs** d'un lot privé (les noms des tests cachés ne doivent pas fuiter) ;
+- le lot public sert à montrer la méthode et à vérifier le lanceur ; le lot privé sert à mesurer.
 
 ## Règles de publication
 
@@ -47,7 +72,8 @@ Chaque tâche a :
 ## Limites connues (dites dans chaque rapport)
 
 - **Peu de tâches** (5) : un écart d'une tâche entre deux modèles n'est pas significatif.
-- **Isolation partielle** : l'agent tourne sur la machine, dans un dossier temporaire, sans les tests cachés ; mais un agent qui a accès à tout le disque pourrait chercher le dépôt. À faire : lancer chaque passage dans un conteneur sans le dépôt.
-- **Contamination à terme** : les tâches et les tests sont publics dans ce dépôt, donc pourront finir dans des données d'entraînement. Parade prévue : ajouter des tâches neuves régulièrement et comparer les modèles sur les tâches créées après leur date de coupure.
+- **Isolation partielle sans conteneur** : voir « Exécution recommandée ». L'intégration conteneur du lanceur est à faire.
+- **Contamination à terme** du lot public : parade, le lot privé, et des tâches neuves ajoutées régulièrement.
+- **Détection de triche par motifs** : la liste de motifs suspects attrape les tricheries évidentes, pas toutes ; le jeton et le nombre de tests attendu ferment la tricherie la plus simple (fausse ligne RESULT).
 - **Le harnais compte** : un modèle mesuré via Claude Code n'est pas mesuré « nu ». Le rapport dit quel outil a été utilisé.
 - **Un seul notateur** pour le ressenti.

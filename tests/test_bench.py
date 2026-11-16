@@ -132,10 +132,80 @@ class RunnerTest(unittest.TestCase):
     def test_agent_sees_only_the_workspace(self):
         self.run_agent("spy", {"spy": self.fake("list")})
         for t in run.load_tasks():
-            visible = (self.results / "spy" / "artifacts" / t["id"] / "run-1" / "VISIBLE.txt").read_text(encoding="utf-8").split()
+            seen = json.loads((self.results / "spy" / "artifacts" / t["id"] / "run-1" / "VISIBLE.txt").read_text(encoding="utf-8"))
             expected = sorted(p.relative_to(t["dir"] / "workspace").as_posix()
                               for p in (t["dir"] / "workspace").rglob("*") if p.is_file())
-            self.assertEqual(expected, visible)
+            self.assertEqual(expected, seen["files"])
+            # dossier de travail hors du dépôt, sans voisin venant du banc
+            self.assertFalse(Path(seen["cwd"]).resolve().is_relative_to(ROOT.resolve()), seen["cwd"])
+            for name in seen["parent"]:
+                self.assertNotIn(name, {"hidden", "reference", "mutants", "results", "artifacts"} | {x["id"] for x in run.load_tasks()})
+            # environnement épuré : ni OLDPWD, ni chemin du dépôt, PWD = dossier de travail
+            env = seen["env"]
+            self.assertNotIn("OLDPWD", env)
+            self.assertEqual(Path(seen["cwd"]).resolve(), Path(env.get("PWD", "")).resolve())
+            for key, value in env.items():
+                self.assertNotIn(str(ROOT), value, key)
+            self.assertLessEqual(set(env) - {"PWD", "__CF_USER_TEXT_ENCODING", "PYTHONIOENCODING"},
+                                 set(run.ENV_BASE) | {"__PYVENV_LAUNCHER__"})
+
+    @needs_java
+    def test_cheating_agent_is_graded_as_failure(self):
+        self.run_agent("cheat", {"cheat": self.fake("cheat", "{reference}")})
+        for t in run.load_tasks():
+            r = self.result("cheat", t["id"])
+            self.assertFalse(r["passed"], t["id"])
+            self.assertIn("pas de ligne RESULT valide", " ".join(r["runs"][0]["failures"]), t["id"])
+
+    @needs_java
+    def test_suspicious_code_is_rejected_before_running(self):
+        t = run.load_tasks(["prd-facture"])[0]
+        work = run.prepare_workdir(t)
+        try:
+            shutil.copytree(t["dir"] / "reference", work, dirs_exist_ok=True)
+            (work / "src" / "com" / "example" / "invoice" / "Hack.java").write_text(
+                "package com.example.invoice;\nclass Hack { static { try { Class.forName(\"Check\").getDeclaredField(\"TOKEN\").setAccessible(true); } catch (Exception e) {} } }\n",
+                encoding="utf-8")
+            g = run.grade(t, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        self.assertFalse(g["passed"])
+        self.assertEqual("suspect", g["stage"])
+
+    @needs_java
+    def test_test_count_must_match_task(self):
+        t = dict(run.load_tasks(["bug-pagination"])[0], hidden_tests=99)
+        work = run.prepare_workdir(t)
+        try:
+            shutil.copytree(t["dir"] / "reference", work, dirs_exist_ok=True)
+            g = run.grade(t, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        self.assertFalse(g["passed"])
+        self.assertIn("99 attendus", " ".join(g["failures"]))
+
+    @needs_java
+    def test_private_task_set(self):
+        private = self.tmp / "tasks-private"
+        shutil.copytree(ROOT / "tasks" / "bug-pagination", private / "bug-pagination")
+        argv = ["--agent", "noop", "--config", str(self.config({"noop": self.fake("noop")})),
+                "--results", str(self.results), "--tasks-dir", str(private)]
+        code, _ = quiet(run.main, argv)
+        self.assertEqual(0, code)
+        r = self.result("noop", "bug-pagination")
+        self.assertEqual("tasks-private", r["task_set"])
+        quiet(report.main, ["--model", "noop", "--date", "2026-11-16", "--results", str(self.results), "--out", str(self.tmp / "out")])
+        md = (self.tmp / "out" / "noop-2026-11-16.md").read_text(encoding="utf-8")
+        self.assertIn("détail non publié", md)
+        self.assertNotIn("cas du ticket", md)
+
+    def test_timeout_kills_the_whole_process_group(self):
+        r = run.run_cmd(["sh", "-c", "sleep 30 & sleep 30"], Path(tempfile.gettempdir()), 1)
+        self.assertTrue(r["timed_out"])
+        self.assertLess(r["duration"], 10)
+
+    def test_private_tasks_are_ignored_by_git(self):
+        self.assertIn("tasks-private/", (ROOT / ".gitignore").read_text(encoding="utf-8").split())
 
     @needs_java
     def test_agent_timeout_is_recorded(self):
@@ -186,6 +256,25 @@ class UsageTest(unittest.TestCase):
         u = run.parse_usage("claude-json", "avertissement\n" + self.SAMPLE)
         self.assertEqual(7, u["turns"])
 
+    def test_claude_error_is_recorded(self):
+        data = json.loads(self.SAMPLE)
+        data.update(is_error=True, subtype="error_max_turns")
+        u = run.parse_usage("claude-json", json.dumps(data))
+        self.assertEqual("error_max_turns", u["agent_error"])
+        self.assertEqual(0.4213, u["cost_usd"])
+        self.assertIsNone(run.parse_usage("claude-json", self.SAMPLE)["agent_error"])
+
+    def test_codex_jsonl(self):
+        out = "\n".join([
+            '{"type":"thread.started"}',
+            '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10,"reasoning_output_tokens":5}}',
+            '{"type":"turn.completed","usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0}}',
+        ])
+        u = run.parse_usage("codex-jsonl", out)
+        self.assertEqual({"input": 150, "output": 35, "cache_read": 40}, u["tokens"])
+        self.assertEqual(2, u["turns"])
+        self.assertIsNone(u["cost_usd"])
+
     def test_garbage_or_none_gives_nothing(self):
         for kind, out in (("claude-json", "pas du json"), ("claude-json", ""), ("none", self.SAMPLE)):
             u = run.parse_usage(kind, out)
@@ -205,7 +294,7 @@ def fake_results(base: Path, name: str, example: bool) -> None:
         rec = {"schema": 1, "model": name, "label": "Modèle " + name, "example": example, "task": task, "kind": "prd",
                "title": "Tâche " + task, "task_fingerprint": "abc", "bench_commit": "1234567", "date": "2026-11-16T00:00:00+00:00",
                "repeat": 1, "passed_runs": int(r["passed"]), "passed": r["passed"], "mean_agent_duration_s": 12.0,
-               "total_cost_usd": 0.5, "runs": [r]}
+               "total_cost_usd": 0.5, "cost_known_runs": 1, "runs": [r]}
         (d / f"{task}.json").write_text(json.dumps(rec), encoding="utf-8")
 
 
@@ -249,6 +338,22 @@ class ReportTest(unittest.TestCase):
         md = (self.tmp / "out" / "noté-2026-11-16.md").read_text(encoding="utf-8")
         self.assertIn("| Honnêteté sur ce qui n'est pas fait | 2/5 |", md)
         self.assertEqual(6, md.count("non noté"))
+
+    def test_repeat_is_aggregated_and_missing_cost_kept(self):
+        fake_results(self.tmp / "results", "rep", False)
+        f = self.tmp / "results" / "rep" / "t2.json"
+        rec = json.loads(f.read_text(encoding="utf-8"))
+        second = dict(rec["runs"][0], run=2, tests_passed=1, cost_usd=None, tokens=None,
+                      failures=["autre règle : attendu <a> obtenu <b>"])
+        rec.update(runs=[rec["runs"][0], second], repeat=2, passed_runs=0, cost_known_runs=1)
+        f.write_text(json.dumps(rec), encoding="utf-8")
+        quiet(report.main, ["--model", "rep", "--date", "2026-11-16", "--results", str(self.tmp / "results"), "--out", str(self.tmp / "out")])
+        md = (self.tmp / "out" / "rep-2026-11-16.md").read_text(encoding="utf-8")
+        self.assertIn("2/3, 1/3", md)
+        self.assertIn("0.50 $ (1/2 passages)", md)
+        self.assertIn("autre règle", md)
+        self.assertIn("(1/2 passages)", md)
+        self.assertIn("abc", md)  # empreinte affichée
 
     def test_html_escapes_content(self):
         fake_results(self.tmp / "results", "x", False)

@@ -58,27 +58,50 @@ def template(model: str, results: Path) -> Path:
 
 # ---------------------------------------------------------------- mise en forme commune
 
-def fmt_tokens(run: dict) -> str:
+def run_tokens(run: dict) -> int | None:
     t = run.get("tokens")
-    if not t:
+    return sum(v for v in t.values() if isinstance(v, int)) if t else None
+
+
+def fmt_tokens(task: dict) -> str:
+    """Moyenne par passage, sur les passages qui ont fourni leurs tokens."""
+    known = [n for n in (run_tokens(r) for r in task["runs"]) if n is not None]
+    if not known:
         return "non fourni"
-    total = sum(v for v in t.values() if isinstance(v, int))
-    return f"{total:,}".replace(",", " ")
+    mean = f"{round(sum(known) / len(known)):,}".replace(",", " ")
+    return mean + ("" if len(known) == len(task["runs"]) else f" ({len(known)}/{len(task['runs'])} passages)")
 
 
-def fmt_cost(value) -> str:
-    return "non fourni" if value is None else f"{value:.2f} $"
+def fmt_cost(value, known: int | None = None, total: int | None = None) -> str:
+    if value is None:
+        return "non fourni"
+    partial = f" ({known}/{total} passages)" if known is not None and total and known < total else ""
+    return f"{value:.2f} ${partial}"
+
+
+def fmt_tests(task: dict) -> str:
+    """Tests passés à chaque passage, par exemple « 25/25, 24/25, 25/25 »."""
+    parts = []
+    for r in task["runs"]:
+        parts.append(f"{r['tests_passed']}/{r['tests_total']}" if r["tests_total"] else r["stage"])
+    return ", ".join(parts)
 
 
 def summary(data: dict) -> dict:
     tasks = data["tasks"]
-    costs = [t.get("total_cost_usd") for t in tasks]
+    costs = [t.get("total_cost_usd") for t in tasks if t.get("total_cost_usd") is not None]
+    complete = all(t.get("cost_known_runs", 0) == t["repeat"] for t in tasks)
     return {
         "passed": sum(t["passed"] for t in tasks),
         "total": len(tasks),
+        "runs_passed": sum(t["passed_runs"] for t in tasks),
+        "runs_total": sum(t["repeat"] for t in tasks),
         "duration": round(sum(t["mean_agent_duration_s"] for t in tasks), 1),
-        "cost": round(sum(costs), 2) if costs and all(c is not None for c in costs) else None,
+        "cost": round(sum(costs), 2) if costs else None,
+        "cost_complete": complete,
         "commits": sorted({t.get("bench_commit") or "inconnu" for t in tasks}),
+        "tools": sorted({t.get("tool_version") or "non relevée" for t in tasks}),
+        "sets": sorted({t.get("task_set", "public") for t in tasks}),
         "repeat": sorted({t["repeat"] for t in tasks}),
     }
 
@@ -86,17 +109,19 @@ def summary(data: dict) -> dict:
 def task_rows(data: dict) -> list[list[str]]:
     rows = []
     for t in data["tasks"]:
-        last = t["runs"][-1]
-        tests = f"{last['tests_passed']}/{last['tests_total']}" if last["tests_total"] else last["stage"]
         rows.append([
             f"{t['title']} ({KIND_LABEL.get(t['kind'], t['kind'])})",
             ("réussie" if t["passed"] else "échouée") + f" · {t['passed_runs']}/{t['repeat']}",
-            tests,
+            fmt_tests(t),
             f"{t['mean_agent_duration_s']} s",
-            fmt_tokens(last),
-            fmt_cost(t.get("total_cost_usd")),
+            fmt_tokens(t),
+            fmt_cost(t.get("total_cost_usd"), t.get("cost_known_runs"), t["repeat"]),
+            t.get("task_fingerprint", "?"),
         ])
     return rows
+
+
+TASK_HEADER = ["Tâche", "Réussite (k/N)", "Tests cachés par passage", "Durée moy.", "Tokens moy.", "Coût", "Empreinte"]
 
 
 def ressenti_rows(data: dict) -> list[list[str]]:
@@ -110,13 +135,34 @@ def ressenti_rows(data: dict) -> list[list[str]]:
 
 
 def failures(data: dict) -> list[tuple[str, list[str]]]:
+    """Échecs agrégés sur tous les passages, avec leur fréquence. Lot privé : pas de détail
+    (les noms des tests cachés ne doivent pas fuiter)."""
     out = []
     for t in data["tasks"]:
-        last = t["runs"][-1]
-        items = last["failures"][:3] or (last["compile_errors"].splitlines()[:2] if last.get("compile_errors") else [])
-        if not t["passed"] and items:
-            out.append((t["title"], items))
+        if t["passed"]:
+            continue
+        if t.get("task_set", "public") != "public":
+            out.append((t["title"], [f"détail non publié (lot privé « {t['task_set']} »)"]))
+            continue
+        counts: dict[str, int] = {}
+        for r in t["runs"]:
+            items = r["failures"][:3] or (r["compile_errors"].splitlines()[:2] if r.get("compile_errors") else [r["stage"]])
+            for i in items:
+                counts[i] = counts.get(i, 0) + 1
+        n = len(t["runs"])
+        out.append((t["title"], [f"{i} ({c}/{n} passages)" if n > 1 else i for i, c in counts.items()][:5]))
     return out
+
+
+def header_lines(meta: dict, s: dict) -> list[str]:
+    cost = fmt_cost(s["cost"]) + ("" if s["cost_complete"] or s["cost"] is None else " (coût manquant sur certains passages)")
+    return [
+        f"Modèle : `{meta['model']}`" + (f" · sorti le {meta['release_date']}" if meta.get("release_date") else ""),
+        f"Tâches réussies (tout ou rien, tests cachés, tous les passages) : **{s['passed']}/{s['total']}** · passages réussis : {s['runs_passed']}/{s['runs_total']}",
+        f"Durée totale de l'agent (moyenne par tâche) : {s['duration']} s · coût : {cost}",
+        f"Passages par tâche : {', '.join(map(str, s['repeat']))} · lot de tâches : {', '.join(s['sets'])}",
+        f"Version du banc : {', '.join(s['commits'])} · outil : {', '.join(s['tools'])}",
+    ]
 
 
 # ---------------------------------------------------------------- Markdown
@@ -134,14 +180,9 @@ def to_markdown(data: dict, date: str) -> str:
     if meta.get("example"):
         parts.append(f"> **{EXAMPLE_BANNER}**\n")
     parts.append(f"# {meta['label']} : rapport du {date}\n")
-    parts.append(
-        f"- Modèle : `{meta['model']}`" + (f" · sorti le {meta['release_date']}" if meta.get("release_date") else "")
-        + f"\n- Tâches réussies (tout ou rien, tests cachés) : **{s['passed']}/{s['total']}**"
-        + f"\n- Durée totale de l'agent : {s['duration']} s · coût : {fmt_cost(s['cost'])}"
-        + f"\n- Passages par tâche : {', '.join(map(str, s['repeat']))} · version du banc : {', '.join(s['commits'])}\n"
-    )
+    parts.append("\n".join("- " + l for l in header_lines(meta, s)) + "\n")
     parts.append("## Résultats par tâche\n")
-    parts.append(md_table(["Tâche", "Résultat", "Tests cachés", "Durée", "Tokens", "Coût"], task_rows(data)) + "\n")
+    parts.append(md_table(TASK_HEADER, task_rows(data)) + "\n")
     fails = failures(data)
     if fails:
         parts.append("## Ce qui a échoué\n")
@@ -156,7 +197,7 @@ def to_markdown(data: dict, date: str) -> str:
     parts.append(
         "## Méthode et limites\n\n"
         "Protocole complet : `PROTOCOLE.md`. Tâches neuves écrites pour ce banc, tests d'acceptation cachés, "
-        "aucun juge LLM pour la réussite. Un seul notateur pour le ressenti. Peu de passages par tâche : "
+        "aucun juge LLM pour la réussite. Deux rapports ne se comparent sur une tâche que si l'empreinte est identique. Un seul notateur pour le ressenti. Peu de passages par tâche : "
         "un écart d'une tâche entre deux modèles n'est pas significatif.\n"
     )
     return "\n".join(parts)
@@ -203,18 +244,18 @@ def to_html(data: dict, date: str) -> str:
 <!-- Généré par bench/report.py : ne pas modifier à la main. -->
 <style>{CSS}</style></head><body><main>
 {banner}<h1>{e(title)}</h1>
-<p class="muted">Modèle <code>{e(meta['model'])}</code>{' · sorti le ' + e(meta['release_date']) if meta.get('release_date') else ''} · version du banc {e(', '.join(s['commits']))}</p>
+<ul>{"".join("<li>" + e(l).replace("**", "").replace("`", "") + "</li>" for l in header_lines(meta, s))}</ul>
 <div class="facts"><div><b>{s['passed']}/{s['total']}</b><span>tâches réussies</span></div>
 <div><b>{s['duration']} s</b><span>durée de l'agent</span></div><div><b>{e(fmt_cost(s['cost']))}</b><span>coût</span></div>
 <div><b>{e(', '.join(map(str, s['repeat'])))}</b><span>passage(s) par tâche</span></div></div>
 <h2>Résultats par tâche</h2>
-{html_table(["Tâche", "Résultat", "Tests cachés", "Durée", "Tokens", "Coût"], task_rows(data))}
+{html_table(TASK_HEADER, task_rows(data))}
 {'<h2>Ce qui a échoué</h2><ul>' + fails + '</ul>' if fails else ''}
 <h2>Ressenti (grille v{data['grille']['version']})</h2>{who}
 {html_table(["Critère", "Note", "Preuve"], ressenti_rows(data))}
 <h2>Méthode et limites</h2>
 <p class="muted">Tâches neuves écrites pour ce banc, tests d'acceptation cachés, aucun juge LLM pour la réussite.
-Un seul notateur pour le ressenti. Peu de passages par tâche : un écart d'une tâche entre deux modèles n'est pas significatif.
+Deux rapports ne se comparent sur une tâche que si l'empreinte est identique. Un seul notateur pour le ressenti. Peu de passages par tâche : un écart d'une tâche entre deux modèles n'est pas significatif.
 Protocole complet : PROTOCOLE.md du dépôt.</p>
 </main></body></html>
 """

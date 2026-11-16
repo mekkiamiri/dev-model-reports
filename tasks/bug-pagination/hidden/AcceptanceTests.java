@@ -10,6 +10,7 @@ public class AcceptanceTests {
     }
 
     public static void main(String[] args) {
+        Check.start();
         Check.test("cas du ticket : 20 éléments, 2 pages", () -> Check.eq(2, new Paginator<>(n(20), 10).pageCount()));
         Check.test("cas du ticket : pas de suivant en page 2", () -> Check.eq(false, new Paginator<>(n(20), 10).hasNext(2)));
         Check.test("cas du ticket : page 3 refusée", () ->

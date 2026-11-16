@@ -11,28 +11,55 @@
     "cmd": ["{python}", "{bench}/fake_agent.py", "noop"],
     "usage": "none"
   },
+  "fake-cheat": {
+    "label": "EXEMPLE : faux agent tricheur, imprime une fausse ligne RESULT (pas un vrai modèle)",
+    "example": true,
+    "cmd": ["{python}", "{bench}/fake_agent.py", "cheat", "{reference}"],
+    "usage": "none"
+  },
   "claude-opus-5-5": {
     "label": "Claude Opus 5.5 via Claude Code (claude -p)",
     "release_date": null,
+    "version_cmd": ["claude", "--version"],
+    "env_passthrough": ["ANTHROPIC_API_KEY"],
     "cmd": [
       "claude", "-p", "{prompt}",
       "--model", "claude-opus-5-5",
       "--output-format", "json",
+      "--safe-mode", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+      "--restricted", "--tools", "Read,Edit,Write,Glob,Grep,Bash",
       "--permission-mode", "acceptEdits",
-      "--allowedTools", "Bash(javac *)", "Bash(java *)", "Bash(find *)", "Bash(mkdir *)", "Bash(ls *)"
+      "--allowedTools", "Bash(javac -d out *)", "Bash(java -cp out *)"
     ],
     "usage": "claude-json"
   },
   "claude-sonnet-5-5": {
     "label": "Claude Sonnet 5.5 via Claude Code (claude -p)",
     "release_date": null,
+    "version_cmd": ["claude", "--version"],
+    "env_passthrough": ["ANTHROPIC_API_KEY"],
     "cmd": [
       "claude", "-p", "{prompt}",
       "--model", "claude-sonnet-5-5",
       "--output-format", "json",
+      "--safe-mode", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+      "--restricted", "--tools", "Read,Edit,Write,Glob,Grep,Bash",
       "--permission-mode", "acceptEdits",
-      "--allowedTools", "Bash(javac *)", "Bash(java *)", "Bash(find *)", "Bash(mkdir *)", "Bash(ls *)"
+      "--allowedTools", "Bash(javac -d out *)", "Bash(java -cp out *)"
     ],
     "usage": "claude-json"
+  },
+  "codex-modele-a-renseigner": {
+    "label": "Modèle à renseigner via Codex CLI (codex exec)",
+    "release_date": null,
+    "version_cmd": ["codex", "--version"],
+    "env_passthrough": ["CODEX_API_KEY", "CODEX_HOME"],
+    "cmd": [
+      "codex", "exec", "{prompt}",
+      "--model", "MODELE_A_RENSEIGNER",
+      "--json", "--sandbox", "workspace-write",
+      "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check"
+    ],
+    "usage": "codex-jsonl"
   }
 }

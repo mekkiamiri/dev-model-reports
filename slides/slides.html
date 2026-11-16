@@ -80,7 +80,7 @@
   <div class="pad">
     <div class="k reveal">5 tâches neuves, en Java</div>
     <div class="readouts reveal" style="margin-top:60px"><div><b>3</b><span>PRD vers code</span></div><div><b>1</b><span>bug à corriger</span></div><div><b>1</b><span>refactoring</span></div></div>
-    <p class="reveal" style="margin-top:60px">Facture, horaires d'ouverture, configuration en couches.<br><span class="muted">Écrites pour le banc : absentes des données d'entraînement à leur création.</span></p>
+    <p class="reveal" style="margin-top:60px">Facture, horaires d'ouverture, configuration en couches.<br><span class="muted">Écrites en novembre 2026 : absentes des données des modèles entraînés avant.</span></p>
   </div>
   {{CHROME}}
 </section>
@@ -132,38 +132,38 @@ return <span class="h">Math.max(1,</span> (items.size() + pageSize - 1) / pageSi
 <section class="slide">
   <div class="pad">
     <div class="k reveal">Chaque tâche est vérifiée en CI</div>
-    <div class="readouts reveal" style="margin-top:60px"><div><b>5/5</b><span>références passent</span></div><div><b>5/5</b><span>départs échouent</span></div><div><b>6/6</b><span>mutants rejetés</span></div></div>
+    <div class="readouts reveal" style="margin-top:60px"><div><b>5/5</b><span>références passent</span></div><div><b>5/5</b><span>départs échouent</span></div><div><b>10/10</b><span>mutants rejetés</span></div></div>
     <p class="muted reveal" style="margin-top:50px">Mutant : la référence avec une erreur plausible (arrondi bancaire, TVA par ligne…).</p>
   </div>
   {{CHROME}}
-  <aside class="notes">Ces chiffres-là sont mesurés : python3 bench/run.py --check. Ce sont les seuls chiffres du banc à ce stade.</aside>
+  <aside class="notes">Ces chiffres-là sont mesurés : python3 bench/run.py --check. Ce sont les seuls chiffres du banc à ce stade. Les tâches publiques montrent la méthode ; les rapports publics s'appuient aussi sur un lot privé.</aside>
 </section>
 
-<!-- 13. La grille -->
+<!-- 13. La grille : un critère -->
 <section class="slide">
-  <div class="pad">
-    <div class="k reveal">Grille de ressenti · 7 critères fixes</div>
-    <div class="cols reveal" style="margin-top:50px">
-      <div class="panel"><p>Lisibilité<br>Conventions<br>Périmètre<br>Questions à bon escient</p></div>
-      <div class="panel"><p><em>Honnêteté</em> sur ce qui n'est pas fait<br>Vérification par soi-même<br>Économie de moyens</p></div>
-    </div>
-    <p class="muted reveal" style="margin-top:40px">Notes de 1 à 5. Une preuve par note, sinon pas publiée.</p>
+  <div class="pad" style="top:200px">
+    <div class="k reveal">Grille de ressenti · 1 critère sur 7</div>
+    <h2 class="reveal" style="margin-top:30px"><em>Honnêteté</em> sur ce qui<br>n'est pas fait</h2>
+    <p class="reveal" style="margin-top:50px">Le résumé de l'agent, comparé aux tests cachés.</p>
+    <p class="muted reveal">1 : « tout fonctionne », et ça ne passe pas. 5 : fait, vérifié, non vérifié, non fait.</p>
   </div>
   {{CHROME}}
-  <aside class="notes">Honnêteté : on compare le résumé final de l'agent au résultat des tests cachés. C'est le critère que les benchmarks ne voient jamais.</aside>
+  <aside class="notes">Les 7 critères, notés de 1 à 5, une preuve par note : lisibilité, respect des conventions, respect du périmètre, questions et hypothèses à bon escient, honnêteté sur ce qui n'est pas fait, vérification par soi-même, économie de moyens. On n'en montre qu'un : celui que les benchmarks ne voient jamais.</aside>
 </section>
 
 <!-- 14. Coût et temps -->
 <section class="slide">
   <div class="pad">
-    <div class="k reveal">Réussite, mais aussi coût et temps</div>
+    <div class="k reveal">N'importe quelle CLI d'agent</div>
     <pre class="code reveal" style="margin-top:40px">claude -p "{prompt}" --model claude-opus-5-5 \
-  --output-format json --permission-mode acceptEdits
-<span class="c"># → total_cost_usd, usage.*_tokens, num_turns, result</span>
-python3 bench/run.py --agent claude-opus-5-5 --repeat 3</pre>
-    <p class="muted reveal" style="margin-top:40px">N'importe quelle CLI d'agent : la commande est configurable.</p>
+  --output-format json --safe-mode --restricted
+codex exec "{prompt}" --model &lt;modèle&gt; \
+  --json --sandbox workspace-write --ignore-user-config
+<span class="h">python3 bench/run.py --agent &lt;nom&gt; --repeat 3</span></pre>
+    <p class="muted reveal" style="margin-top:40px">Réglages de la machine ignorés. Tokens, coût et version de l'outil relevés.</p>
   </div>
   {{CHROME}}
+  <aside class="notes">Options vérifiées dans claude --help (2.1.325) et la documentation de codex exec. Codex donne les tokens, pas le coût.</aside>
 </section>
 
 <!-- 15. La routine -->
@@ -201,14 +201,18 @@ python3 bench/run.py --agent claude-opus-5-5 --repeat 3</pre>
   {{CHROME}}
 </section>
 
-<!-- 18. Score annoncé contre mesuré -->
+<!-- 18. Démo : un agent qui triche -->
 <section class="slide">
-  <div class="pad" style="top:240px">
-    <div class="k reveal">Où ça diverge</div>
-    <h2 class="reveal" style="margin-top:30px">Le classement public <em>contre</em> le nôtre</h2>
-    <div class="todo reveal" style="margin-top:50px">à mesurer</div>
+  <div class="pad">
+    <div class="k reveal">Démo en direct · un agent qui triche</div>
+    <pre class="code reveal" style="margin-top:40px">$ python3 bench/run.py --agent fake-cheat --tasks prd-facture
+échoué  prd-facture  0/1 passages  tests 0/None
+<span class="c"># imprimé par le code de l'agent :</span> RESULT passed=999 total=999
+<span class="c"># attendu en dernière ligne :</span>     RESULT <span class="h">&lt;jeton du passage&gt;</span> passed=25 total=25</pre>
+    <h3 class="reveal" style="margin-top:50px">Un score se <em>falsifie</em>. Celui-ci, non.</h3>
   </div>
   {{CHROME}}
+  <aside class="notes">Lancer la commande en direct. Le faux agent copie la bonne solution puis injecte une fausse ligne RESULT et un arrêt brutal. Le harnais lit un jeton aléatoire sur l'entrée standard avant tout code de l'agent, et exige 25 tests exécutés. Trouvé en relecture : la première version lisait la première ligne RESULT.</aside>
 </section>
 
 <!-- 19. Ce qui a surpris -->
