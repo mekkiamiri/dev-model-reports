@@ -7,7 +7,9 @@ Usage :
   python3 bench/run.py --agent <nom> [--config bench/agents.json] [--tasks id,id] [--repeat N]
                        [--tasks-dir tasks-private]
       Lance l'agent configuré sur chaque tâche, applique les tests cachés et écrit
-      results/<nom>/<tâche>.json.
+      results/<nom>/<tâche>.json. Avec --append-run [--passage k], ajoute les passages au
+      résultat existant (routine 48 h). Un agent qui désigne un modèle exclu par
+      bench/watch.json (Claude Fable, toujours) est refusé.
 
 L'agent est une commande configurable (fichier JSON, voir bench/agents.example.json).
 Chaque passage reçoit un dossier temporaire neuf (nom aléatoire, hors du dépôt) qui ne
@@ -236,7 +238,7 @@ def agent_env(agent: dict, workdir: Path) -> dict:
 def parse_usage(kind: str, stdout: str) -> dict:
     """Tokens, coût, tours, message final et erreur éventuelle, si la commande les fournit."""
     usage = {"tokens": None, "cost_usd": None, "turns": None, "final_message": None, "agent_error": None,
-             "external_failure": False}
+             "external_failure": False, "models_used": None}
     text = stdout.strip()
     if kind == "claude-json":
         data = None
@@ -255,6 +257,8 @@ def parse_usage(kind: str, stdout: str) -> dict:
         usage["cost_usd"] = data.get("total_cost_usd")
         usage["turns"] = data.get("num_turns")
         usage["final_message"] = data.get("result")
+        if isinstance(data.get("modelUsage"), dict) and data["modelUsage"]:
+            usage["models_used"] = sorted(data["modelUsage"])
         subtype = data.get("subtype")
         if data.get("is_error"):
             # « subtype: success » avec is_error vrai : l'outil n'a pas pu travailler (connexion, quota…)
@@ -282,7 +286,42 @@ def parse_usage(kind: str, stdout: str) -> dict:
                 usage["agent_error"] = ev.get("type")
         if turns:
             usage["tokens"], usage["turns"] = totals, turns
+    elif kind == "gemini-json":
+        usage.update(parse_gemini(text))
     return usage
+
+
+def parse_gemini(text: str) -> dict:
+    """Sortie de `gemini -p … --output-format json` (format à confirmer au premier vrai passage) :
+    {"response": "…", "stats": {"models": {"<modèle>": {"api": {"totalRequests": n},
+    "tokens": {"prompt": n, "candidates": n, "cached": n, "thoughts": n}}}}, "error": {"message": "…"}}.
+    Lecture tolérante : un champ absent reste à None. Pas de coût (abonnement ou clé, non fourni)."""
+    data = None
+    for candidate in (text, text[text.find("{"):] if "{" in text else "", (text.splitlines() or [""])[-1]):
+        try:
+            data = json.loads(candidate)
+            break
+        except json.JSONDecodeError:
+            continue
+    if not isinstance(data, dict):
+        return {}
+    out = {"final_message": data.get("response") if isinstance(data.get("response"), str) else None}
+    models = (data.get("stats") or {}).get("models") or {}
+    if isinstance(models, dict) and models:
+        totals, turns = {"input": 0, "output": 0, "cache_read": 0}, 0
+        for m in models.values():
+            t, api = (m or {}).get("tokens") or {}, (m or {}).get("api") or {}
+            totals["input"] += t.get("prompt") or t.get("input") or 0
+            totals["output"] += (t.get("candidates") or t.get("output") or 0) + (t.get("thoughts") or 0)
+            totals["cache_read"] += t.get("cached") or 0
+            turns += api.get("totalRequests") or 0
+        out.update(tokens=totals, turns=turns or None, models_used=sorted(models))
+    err = data.get("error")
+    if err:
+        out["agent_error"] = (err.get("type") or err.get("code") or "error") if isinstance(err, dict) else str(err)[:200]
+        spent = sum((out.get("tokens") or {}).values())
+        out["external_failure"] = spent == 0
+    return out
 
 
 def run_agent(name: str, agent: dict, task: dict, workdir: Path) -> dict:
@@ -315,10 +354,34 @@ def tool_version(agent: dict) -> str | None:
     return (r["stdout"].strip() or r["stderr"].strip() or None) if r["code"] == 0 else None
 
 
-def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, keep: bool, context: dict) -> dict:
-    runs = []
+def aggregate(runs: list[dict]) -> dict:
+    """Agrégats d'une tâche. Un échec extérieur (connexion, quota : l'outil n'a pas travaillé) est gardé
+    dans `runs` mais ne compte pas contre le modèle : il est exclu des passages comptés."""
+    counted = [r for r in runs if not r.get("external_failure")]
+    costs = [r["cost_usd"] for r in runs if r.get("cost_usd") is not None]
+    return {
+        "repeat": len(counted), "passed_runs": sum(r["passed"] for r in counted),
+        "passed": bool(counted) and all(r["passed"] for r in counted),
+        "external_failures": len(runs) - len(counted),
+        "mean_agent_duration_s": round(sum(r["agent_duration_s"] for r in counted) / len(counted), 2) if counted else 0.0,
+        "total_cost_usd": round(sum(costs), 4) if costs else None,
+        "cost_known_runs": len(costs),
+    }
+
+
+def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, keep: bool, context: dict,
+             append: bool = False, passage: int | None = None) -> dict:
     model_dir = results / name
-    for i in range(1, repeat + 1):
+    path = model_dir / f"{task['id']}.json"
+    runs = []
+    if append and path.exists():
+        old = json.loads(path.read_text(encoding="utf-8"))
+        if old.get("task_fingerprint") != fingerprint(task):
+            raise SystemExit(f"{path} : la tâche a changé (empreinte {old.get('task_fingerprint')} -> {fingerprint(task)}), "
+                             "impossible d'ajouter un passage ; déplacer l'ancien résultat")
+        runs = old.get("runs", [])
+    first = len(runs) + 1
+    for i in range(first, first + repeat):
         workdir = prepare_workdir(task)
         try:
             agent_out = run_agent(name, agent, task, workdir)
@@ -338,7 +401,9 @@ def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, kee
             else:
                 shutil.rmtree(workdir, ignore_errors=True)
         runs.append({
-            "run": i, "passed": graded["passed"], "stage": graded["stage"],
+            "run": i, "passage": passage, "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+            "tool_version": context["tool_version"], "bench_commit": context["bench_commit"],
+            "models_used": usage.get("models_used"), "passed": graded["passed"], "stage": graded["stage"],
             "tests_passed": graded["tests_passed"], "tests_total": graded["tests_total"],
             "failures": graded["failures"], "compile_errors": graded["compile_errors"],
             "agent_exit_code": agent_out["code"], "agent_timed_out": agent_out["timed_out"],
@@ -346,27 +411,24 @@ def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, kee
             "grading_duration_s": graded["grading_duration_s"],
             "tokens": usage["tokens"], "cost_usd": usage["cost_usd"], "turns": usage["turns"],
         })
-    costs = [r["cost_usd"] for r in runs if r["cost_usd"] is not None]
     record = {
         "schema": SCHEMA, "model": name, "label": agent.get("label", name), "example": bool(agent.get("example", False)),
         "task": task["id"], "task_set": task["set"], "kind": task["kind"], "title": task["title"],
         "task_fingerprint": fingerprint(task), "hidden_tests": task.get("hidden_tests"),
         "bench_commit": context["bench_commit"], "tool_version": context["tool_version"],
         "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "repeat": repeat, "passed_runs": sum(r["passed"] for r in runs), "passed": all(r["passed"] for r in runs),
-        "mean_agent_duration_s": round(sum(r["agent_duration_s"] for r in runs) / len(runs), 2),
-        "total_cost_usd": round(sum(costs), 4) if costs else None,
-        "cost_known_runs": len(costs),
+        **aggregate(runs),
         "runs": runs,
     }
     model_dir.mkdir(parents=True, exist_ok=True)
-    (model_dir / f"{task['id']}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return record
 
 
 def write_meta(name: str, agent: dict, results: Path, context: dict) -> None:
     meta = {"model": name, "label": agent.get("label", name), "example": bool(agent.get("example", False)),
             "release_date": agent.get("release_date"), "cmd": agent["cmd"],
+            **{k: agent[k] for k in ("radar_id", "auto_from_radar", "hors_delai") if k in agent},
             "tool_version": context["tool_version"], "bench_commit": context["bench_commit"],
             "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
     (results / name).mkdir(parents=True, exist_ok=True)
@@ -414,6 +476,15 @@ def check_tasks(tasks: list[dict]) -> bool:
     return ok
 
 
+def refused(name: str, agent: dict, watch: Path) -> str | None:
+    """Raison du refus d'un agent dont le nom ou la commande désigne un modèle exclu (Fable toujours)."""
+    if str(BENCH) not in sys.path:
+        sys.path.insert(0, str(BENCH))
+    from radar import excluded_command
+    rules = json.loads(watch.read_text(encoding="utf-8")) if watch.exists() else {}
+    return excluded_command(name, [str(c) for c in agent.get("cmd", [])], rules)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--check", action="store_true", help="vérifier les tâches (référence passe, départ et mutants échouent)")
@@ -424,6 +495,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repeat", type=int, default=1, help="nombre de passages par tâche (défaut : 1)")
     p.add_argument("--results", type=Path, default=ROOT / "results", help="dossier des résultats")
     p.add_argument("--keep", action="store_true", help="garder les dossiers de travail temporaires")
+    p.add_argument("--append-run", action="store_true",
+                   help="ajouter les passages au résultat existant de chaque tâche au lieu de l'écraser")
+    p.add_argument("--passage", type=int, help="numéro de passage de la routine 48 h (noté dans chaque passage)")
+    p.add_argument("--watch", type=Path, default=BENCH / "watch.json", help="exclusions de modèles (défaut : bench/watch.json)")
     args = p.parse_args(argv)
     tasks = load_tasks(args.tasks.split(",") if args.tasks else None, args.tasks_dir)
     if not tasks:
@@ -437,13 +512,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.agent not in agents:
         p.error(f"agent inconnu dans {config} : {args.agent} (connus : {', '.join(agents)})")
     agent = agents[args.agent]
+    blocked = refused(args.agent, agent, args.watch)
+    if blocked:
+        p.error(f"agent refusé, modèle exclu ({blocked}) : voir bench/watch.json")
     context = {"bench_commit": bench_commit(), "tool_version": tool_version(agent)}
     if context["bench_commit"] and context["bench_commit"].endswith("-dirty"):
         print("attention : le dépôt a des modifications non commitées (bench_commit « -dirty »)")
     write_meta(args.agent, agent, args.results, context)
     passed = 0
     for task in tasks:
-        rec = run_task(args.agent, agent, task, args.repeat, args.results, args.keep, context)
+        rec = run_task(args.agent, agent, task, args.repeat, args.results, args.keep, context, args.append_run, args.passage)
         passed += rec["passed"]
         last = rec["runs"][-1]
         print(f"{'réussi ' if rec['passed'] else 'échoué '} {task['id']:<16} {rec['passed_runs']}/{rec['repeat']} passages"
