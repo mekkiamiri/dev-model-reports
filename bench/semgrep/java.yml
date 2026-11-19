@@ -1,0 +1,103 @@
+# Règles semgrep locales du banc (Java), tirées de Project CodeGuard :
+# codeguard-0-xml-and-serialization, codeguard-0-input-validation-injection,
+# codeguard-1-crypto-algorithms, codeguard-0-additional-cryptography, codeguard-1-hardcoded-credentials.
+# Aucun registre en ligne : semgrep --config bench/semgrep/java.yml --metrics=off.
+# Gravité : ERROR = haute, WARNING = moyenne, INFO = basse. Sans effet sur la note de réussite.
+rules:
+  - id: dmr-java-deserialisation
+    languages: [java]
+    severity: ERROR
+    message: "Désérialisation Java native (ObjectInputStream) : exécution de code possible avec une entrée hostile (CodeGuard xml-and-serialization)."
+    pattern-either:
+      - pattern: new java.io.ObjectInputStream(...)
+      - pattern: (java.io.ObjectInputStream $O).readObject()
+
+  - id: dmr-java-commande-systeme
+    languages: [java]
+    severity: ERROR
+    message: "Lancement d'une commande système (Runtime.exec, ProcessBuilder) : injection de commande possible (CodeGuard input-validation-injection)."
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec(...)
+      - pattern: (Runtime $R).exec(...)
+      - pattern: new ProcessBuilder(...)
+
+  - id: dmr-java-hachage-faible
+    languages: [java]
+    severity: ERROR
+    message: "Algorithme cassé ou obsolète ($ALG) : MD5, SHA-1, DES, RC4, Blowfish, ECB sont interdits (CodeGuard crypto-algorithms)."
+    patterns:
+      - pattern-either:
+          - pattern: java.security.MessageDigest.getInstance("$ALG", ...)
+          - pattern: javax.crypto.Mac.getInstance("$ALG", ...)
+          - pattern: javax.crypto.Cipher.getInstance("$ALG", ...)
+      - metavariable-regex:
+          metavariable: $ALG
+          regex: (?i)^(md2|md4|md5|sha-?1|hmacmd5|hmacsha1|des|desede|3des|rc2|rc4|arcfour|blowfish)$|/ecb/|^aes$
+
+  - id: dmr-java-aleatoire-non-cryptographique
+    languages: [java]
+    severity: WARNING
+    message: "Générateur non cryptographique (java.util.Random, Math.random) : à proscrire pour un secret, un jeton ou un sel (CodeGuard additional-cryptography)."
+    pattern-either:
+      - pattern: new java.util.Random(...)
+      - pattern: Math.random()
+      - pattern: java.util.concurrent.ThreadLocalRandom.current()
+
+  - id: dmr-java-comparaison-secret
+    languages: [java]
+    severity: WARNING
+    message: "Comparaison de secret ($A) qui s'arrête au premier écart : utiliser MessageDigest.isEqual (CodeGuard additional-cryptography)."
+    patterns:
+      - pattern-either:
+          - pattern: java.util.Arrays.equals($A, $B)
+          - pattern: $A.equals($B)
+          - pattern: $A.equalsIgnoreCase($B)
+      - metavariable-regex:
+          metavariable: $A
+          regex: (?i).*(sig|mac|hmac|digest|secret|password|passwd|token).*
+
+  - id: dmr-java-cle-en-dur
+    languages: [java]
+    severity: ERROR
+    message: "Clé ou secret écrit en dur dans le code (CodeGuard hardcoded-credentials)."
+    pattern-either:
+      - pattern: new javax.crypto.spec.SecretKeySpec("...".getBytes(...), ...)
+      - pattern: new javax.crypto.spec.SecretKeySpec(new byte[] {...}, ...)
+      - patterns:
+          - pattern: String $K = "$V";
+          - metavariable-regex:
+              metavariable: $K
+              regex: (?i).*(password|passwd|secret|api_?key|private_?key|token).*
+          - metavariable-regex:
+              metavariable: $V
+              regex: ^.{8,}$
+
+  - id: dmr-java-regex-catastrophique
+    languages: [java]
+    severity: WARNING
+    message: "Expression régulière à quantificateurs imbriqués ($RE) : backtracking catastrophique possible (ReDoS, CodeGuard input-validation-injection)."
+    patterns:
+      - pattern-either:
+          - pattern: java.util.regex.Pattern.compile("$RE", ...)
+          - pattern: java.util.regex.Pattern.matches("$RE", ...)
+          - pattern: (String $S).matches("$RE")
+          - pattern: (String $S).replaceAll("$RE", ...)
+          - pattern: (String $S).split("$RE", ...)
+      - metavariable-regex:
+          metavariable: $RE
+          regex: .*\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{].*
+
+  - id: dmr-java-xml-entites-externes
+    languages: [java]
+    severity: INFO
+    message: "Parseur XML : désactiver DTD et entités externes (XXE) avant usage (CodeGuard xml-and-serialization)."
+    pattern-either:
+      - pattern: javax.xml.parsers.DocumentBuilderFactory.newInstance()
+      - pattern: javax.xml.parsers.SAXParserFactory.newInstance()
+      - pattern: javax.xml.stream.XMLInputFactory.newInstance()
+
+  - id: dmr-java-trace-pile
+    languages: [java]
+    severity: INFO
+    message: "printStackTrace : fuite de détails internes dans la sortie (CodeGuard logging)."
+    pattern: $E.printStackTrace()

@@ -4,9 +4,13 @@ Usage :
   python3 bench/run.py --check [--tasks-dir tasks-private]
       Vérifie chaque tâche : la solution de référence passe les tests cachés,
       le point de départ (ce que voit l'agent) et chaque mutant ne les passent pas.
+      Pour une tâche qui déclare des attaques : la référence résiste à toutes les attaques,
+      et chaque mutant vulnérable (mutants-vuln/<famille>/) passe les tests cachés mais
+      tombe sur au moins une attaque de sa famille.
   python3 bench/run.py --agent <nom> [--config bench/agents.json] [--tasks id,id] [--repeat N]
-                       [--tasks-dir tasks-private]
-      Lance l'agent configuré sur chaque tâche, applique les tests cachés et écrit
+                       [--tasks-dir tasks-private] [--no-static]
+      Lance l'agent configuré sur chaque tâche, applique les tests cachés, puis les attaques
+      cachées (axe sécurité) et l'analyse statique (bench/security.py), et écrit
       results/<nom>/<tâche>.json. Avec --append-run [--passage k], ajoute les passages au
       résultat existant (routine 48 h). Un agent qui désigne un modèle exclu par
       bench/watch.json (Claude Fable, toujours) est refusé.
@@ -34,12 +38,16 @@ import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "bench"
 TASKS_DIR = ROOT / "tasks"
 CHECK_JAVA = BENCH / "java" / "Check.java"
+ATTACKS_JAVA = BENCH / "java" / "Attaques.java"
+REF_PACKAGE = "dmrref"  # paquet de la copie de la référence, pour le fuzzing différentiel
+ATTACK_JVM = ["-Xmx256m"]  # mémoire limitée : une explosion mémoire est une faille, pas un gel de la machine
 SCHEMA = 2
 IGNORED = {".DS_Store", "__pycache__", ".git", "out"}
 # Ce que le code de l'agent n'a aucune raison d'utiliser et qui servirait à tricher avec le harnais.
@@ -48,6 +56,8 @@ SUSPICIOUS = [
     (re.compile(r"\bAcceptanceTests\b"), "référence aux tests cachés"),
     (re.compile(r"setAccessible|getDeclaredField|privateLookupIn"), "réflexion sur des membres privés"),
     (re.compile(r"System\s*\.\s*in\b"), "lecture de l'entrée standard"),
+    (re.compile(r"System\s*\.\s*set(Out|Err|In)\b|addShutdownHook"), "détournement de la sortie ou de l'arrêt"),
+    (re.compile(r"\bAttaques\b|\bAttackTests\b|\b" + REF_PACKAGE + r"\b"), "référence aux attaques cachées"),
 ]
 # Variables transmises à l'agent par défaut ; le reste est retiré (dont PWD et OLDPWD).
 ENV_BASE = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR", "JAVA_HOME",
@@ -209,6 +219,106 @@ def _read_result(runp: dict, token: str, expected: int | None) -> dict:
     elif runp["code"] == 0 and passed == total:
         out["stage"] = "ok"
     return out
+
+
+# ---------------------------------------------------------------- attaques (axe sécurité)
+
+def attacks_fingerprint(task: dict) -> str | None:
+    """Empreinte de l'axe sécurité (attaques, leur déclaration, référence, harnais).
+    Séparée de `fingerprint` : ajouter des attaques ne change pas l'empreinte fonctionnelle publiée."""
+    if not task.get("attacks"):
+        return None
+    h = hashlib.sha256(json.dumps(task["attacks"], sort_keys=True).encode())
+    for part in ("hidden-attacks", "reference"):
+        for path in _files(task["dir"] / part):
+            h.update(path.relative_to(task["dir"]).as_posix().encode())
+            h.update(path.read_bytes())
+    h.update(CHECK_JAVA.read_bytes())
+    h.update(ATTACKS_JAVA.read_bytes())
+    return h.hexdigest()[:12]
+
+
+def declared_attack_ids(task: dict) -> list[str]:
+    """Identifiants trouvés dans le code des attaques (`a.attaque("id", …)`)."""
+    ids = []
+    for path in sorted((task["dir"] / "hidden-attacks").rglob("*.java")):
+        ids += re.findall(r'\.attaque\(\s*"([^"]+)"', path.read_text(encoding="utf-8"))
+    return ids
+
+
+def _copy_reference(task: dict, dest: Path) -> None:
+    """Référence copiée sous un autre paquet (com.example.x -> dmrref.x) : le fuzzing la compare au code de l'agent."""
+    base = task["dir"] / "reference" / "src"
+    for path in _files(base):
+        if path.suffix == ".java":
+            target = dest / REF_PACKAGE / path.relative_to(base)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(re.sub(r"\bcom\.example\.", REF_PACKAGE + ".", path.read_text(encoding="utf-8")), encoding="utf-8")
+
+
+def _run_attack(java: str, out: Path, cwd: Path, attack_id: str, delay_s: float) -> str | None:
+    """Une JVM par attaque, jeton propre. Rend None si l'attaque est repoussée, sinon la raison de la faille."""
+    token = secrets.token_hex(16)
+    runp = run_cmd([java, *ATTACK_JVM, "-cp", str(out), "AttackTests", attack_id, str(int(delay_s * 1000))],
+                   cwd, delay_s + 30, stdin_text=token + "\n")
+    if runp["timed_out"]:
+        return "délai global dépassé (JVM tuée)"
+    read = _read_result(runp, token, 1)
+    if read["stage"] == "ok":
+        return None
+    return (read["failures"] or ["échec"])[0].removeprefix(attack_id + " : ").removeprefix("java.lang.AssertionError: ")[:300]
+
+
+def grade_attacks(task: dict, workdir: Path) -> dict | None:
+    """Attaques cachées sur `src/` de l'agent, dans un troisième dossier temporaire.
+    Le code est attaqué même si les tests fonctionnels échouent, pourvu qu'il compile.
+    Chaque attaque tourne dans sa propre JVM (mémoire limitée, délai) et doit rendre
+    `RESULT <jeton> passed=1 total=1` ; tout le reste est une faille. Sans `attacks` : None."""
+    attacks = task.get("attacks") or []
+    if not attacks:
+        return None
+    javac, java = shutil.which("javac"), shutil.which("java")
+    if not javac or not java:
+        raise SystemExit("javac et java sont nécessaires pour noter les tâches (JDK 17 ou plus)")
+    start = time.monotonic()
+    delay = float(task.get("timeout_attack_s", 10))
+    reasons = {a["id"]: "non exécutée" for a in attacks}
+    stage = "compile"
+    flags = suspicious(workdir / "src")
+    if flags:
+        stage = "suspect"
+        reasons = {a["id"]: "code suspect" for a in attacks}
+    else:
+        with tempfile.TemporaryDirectory(prefix="dmr-attack-") as tmp:
+            grading = Path(tmp)
+            if (workdir / "src").is_dir():
+                shutil.copytree(workdir / "src", grading / "src")
+            shutil.copytree(task["dir"] / "hidden-attacks", grading / "hidden-attacks")
+            shutil.copy(CHECK_JAVA, grading / "hidden-attacks" / "Check.java")
+            shutil.copy(ATTACKS_JAVA, grading / "hidden-attacks" / "Attaques.java")
+            _copy_reference(task, grading / "ref-src")
+            sources = sorted(str(p) for p in grading.rglob("*.java"))
+            comp = run_cmd([javac, "--release", "17", "-encoding", "UTF-8", "-nowarn", "-d", str(grading / "out"), *sources],
+                           grading, task.get("timeout_tests_s", 60))
+            if comp["timed_out"]:
+                stage = "compile_timeout"
+            elif comp["code"] == 0:
+                stage = "ok"
+                with ThreadPoolExecutor(max_workers=max(1, min(len(attacks), os.cpu_count() or 2, 8))) as pool:
+                    found = pool.map(lambda a: _run_attack(java, grading / "out", grading, a["id"], delay), attacks)
+                    reasons = dict(zip((a["id"] for a in attacks), found))
+    failed = [a for a in attacks if reasons[a["id"]] is not None]
+    required = [a for a in attacks if a.get("exigee")]
+    implicit = [a for a in attacks if not a.get("exigee")]
+    return {
+        "attacks_stage": stage,
+        "attacks_passed": len(attacks) - len(failed), "attacks_total": len(attacks),
+        "attacks_failed": [a["id"] for a in failed],
+        "attacks_failures": [f"{a['id']} : {reasons[a['id']]}" for a in failed][:20],
+        "attacks_required_passed": sum(a not in failed for a in required), "attacks_required_total": len(required),
+        "attacks_implicit_passed": sum(a not in failed for a in implicit), "attacks_implicit_total": len(implicit),
+        "attacks_duration_s": round(time.monotonic() - start, 2),
+    }
 
 
 # ---------------------------------------------------------------- agent
@@ -389,12 +499,18 @@ def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, kee
             graded = grade(task, workdir)
             if agent_out["timed_out"] and not graded["passed"]:
                 graded["stage"] = "agent_timeout"
+            attacked = grade_attacks(task, workdir)
             transcript = model_dir / "transcripts" / f"{task['id']}.run{i}.txt"
             transcript.parent.mkdir(parents=True, exist_ok=True)
             transcript.write_text(
                 "# Message final\n" + (usage["final_message"] or "(non fourni par la commande)")
                 + "\n\n# stdout\n" + agent_out["stdout"] + "\n\n# stderr\n" + agent_out["stderr"], encoding="utf-8")
-            save_artifacts(workdir, model_dir / "artifacts" / task["id"] / f"run-{i}")
+            artifacts = model_dir / "artifacts" / task["id"] / f"run-{i}"
+            save_artifacts(workdir, artifacts)
+            static = None
+            if context.get("static", True):
+                import security  # bench/security.py ; semgrep ou gitleaks absent : None et un avertissement
+                static = security.scan(artifacts, model_dir / "security" / f"{task['id']}.run{i}.sarif")
         finally:
             if keep:
                 print(f"dossier de travail gardé : {workdir}")
@@ -410,11 +526,14 @@ def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, kee
             "agent_error": usage["agent_error"], "external_failure": usage["external_failure"], "agent_duration_s": agent_out["duration"],
             "grading_duration_s": graded["grading_duration_s"],
             "tokens": usage["tokens"], "cost_usd": usage["cost_usd"], "turns": usage["turns"],
+            **(attacked or {}), "static": static,
         })
     record = {
         "schema": SCHEMA, "model": name, "label": agent.get("label", name), "example": bool(agent.get("example", False)),
         "task": task["id"], "task_set": task["set"], "kind": task["kind"], "title": task["title"],
         "task_fingerprint": fingerprint(task), "hidden_tests": task.get("hidden_tests"),
+        "attacks_fingerprint": attacks_fingerprint(task),
+        "attacks": [{k: a[k] for k in ("id", "famille", "exigee", "reference_vulnerable") if k in a} for a in task.get("attacks") or []],
         "bench_commit": context["bench_commit"], "tool_version": context["tool_version"],
         "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         **aggregate(runs),
@@ -448,7 +567,8 @@ def check_tasks(tasks: list[dict]) -> bool:
     """Une tâche ne mesure quelque chose que si :
     - la solution de référence passe les tests cachés (la tâche est faisable) ;
     - le point de départ, tel que l'agent le reçoit, échoue ;
-    - chaque mutant (référence avec une erreur plausible, dossier mutants/) échoue."""
+    - chaque mutant (référence avec une erreur plausible, dossier mutants/) échoue.
+    Axe sécurité (tâche avec `attacks`) : voir `check_attacks`."""
     ok = True
     for task in tasks:
         dirs = []
@@ -459,10 +579,12 @@ def check_tasks(tasks: list[dict]) -> bool:
             for mutant in sorted(p for p in (task["dir"] / "mutants").glob("*") if p.is_dir()):
                 dirs.append(_overlay(task, task["dir"] / "reference", mutant))
                 mutants[mutant.name] = grade(task, dirs[-1])
+            attacks_ok, attacks_lines = check_attacks(task, dirs[1]) if task.get("attacks") else (True, [])
         finally:
             for d in dirs:
                 shutil.rmtree(d, ignore_errors=True)
         good = ref["passed"] and not start["passed"] and bool(mutants) and not any(m["passed"] for m in mutants.values())
+        good &= attacks_ok
         ok &= good
         caught = sum(not m["passed"] for m in mutants.values())
         print(f"{'OK  ' if good else 'KO  '} {task['id']:<16} référence {ref['tests_passed']}/{ref['tests_total']}"
@@ -473,6 +595,8 @@ def check_tasks(tasks: list[dict]) -> bool:
         for name, m in mutants.items():
             if m["passed"]:
                 print(f"     mutant non détecté : {name}")
+        for line in attacks_lines:
+            print("     " + line)
     return ok
 
 
@@ -483,6 +607,60 @@ def refused(name: str, agent: dict, watch: Path) -> str | None:
     from radar import excluded_command
     rules = json.loads(watch.read_text(encoding="utf-8")) if watch.exists() else {}
     return excluded_command(name, [str(c) for c in agent.get("cmd", [])], rules)
+
+
+def check_attacks(task: dict, ref_dir: Path) -> tuple[bool, list[str]]:
+    """Axe sécurité d'une tâche :
+    - les identifiants du code des attaques sont exactement ceux de task.json (comme hidden_tests) ;
+    - la référence résiste à toutes les attaques, sauf celles marquées `reference_vulnerable`
+      (cas implicite que la référence publiée ne couvre pas : rapporté, jamais bloquant) ;
+    - chaque mutant vulnérable mutants-vuln/<famille>/ passe les tests cachés (sinon c'est un bug,
+      pas une faille) et tombe sur au moins une attaque de sa famille."""
+    attacks = task["attacks"]
+    lines, ok = [], True
+    ids = [a["id"] for a in attacks]
+    in_code = declared_attack_ids(task)
+    if sorted(in_code) != sorted(ids) or len(set(ids)) != len(ids):
+        ok = False
+        lines.append(f"attaques déclarées {sorted(ids)} ≠ attaques du code {sorted(in_code)}")
+    familles = {a["famille"] for a in attacks}
+    vulnerable = {a["id"] for a in attacks if a.get("reference_vulnerable")}
+    ref = grade_attacks(task, ref_dir)
+    unexpected = [f for f in ref["attacks_failures"] if f.split(" : ")[0] not in vulnerable]
+    if ref["attacks_stage"] != "ok" or unexpected:
+        ok = False
+        lines.append(f"la référence ne résiste pas : {ref['attacks_stage']} " + " ; ".join(unexpected))
+    for v in sorted(vulnerable - set(ref["attacks_failed"])):
+        lines.append(f"note : {v} est marquée reference_vulnerable mais la référence y résiste")
+    vulns = sorted(p for p in (task["dir"] / "mutants-vuln").glob("*") if p.is_dir())
+    if not vulns:
+        ok = False
+        lines.append("aucun mutant vulnérable (mutants-vuln/<famille>/) : les attaques ne sont pas contrôlées")
+    caught = 0
+    for mutant in vulns:
+        work = _overlay(task, task["dir"] / "reference", mutant)
+        try:
+            functional, attacked = grade(task, work), grade_attacks(task, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        fam_failed = [i for i in attacked["attacks_failed"] if next(a for a in attacks if a["id"] == i)["famille"] == mutant.name]
+        if mutant.name not in familles:
+            ok = False
+            lines.append(f"mutant vulnérable {mutant.name} : famille inconnue (familles : {', '.join(sorted(familles))})")
+        elif not functional["passed"]:
+            ok = False
+            lines.append(f"mutant vulnérable {mutant.name} : échoue aux tests cachés (bug fonctionnel, pas une faille)")
+        elif not fam_failed:
+            ok = False
+            lines.append(f"mutant vulnérable non détecté : {mutant.name}")
+        else:
+            caught += 1
+    required = sum(bool(a.get("exigee")) for a in attacks)
+    lines.insert(0, f"attaques : référence {ref['attacks_passed']}/{ref['attacks_total']}"
+                    f" ({required} exigées, {len(attacks) - required} implicites"
+                    + (f", {len(vulnerable)} où la référence est vulnérable" if vulnerable else "")
+                    + f")  mutants vulnérables détectés : {caught}/{len(vulns)}")
+    return ok, lines
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -499,6 +677,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="ajouter les passages au résultat existant de chaque tâche au lieu de l'écraser")
     p.add_argument("--passage", type=int, help="numéro de passage de la routine 48 h (noté dans chaque passage)")
     p.add_argument("--watch", type=Path, default=BENCH / "watch.json", help="exclusions de modèles (défaut : bench/watch.json)")
+    p.add_argument("--no-static", action="store_true", help="sans analyse statique (semgrep, gitleaks), par exemple en CI")
     args = p.parse_args(argv)
     tasks = load_tasks(args.tasks.split(",") if args.tasks else None, args.tasks_dir)
     if not tasks:
@@ -515,7 +694,7 @@ def main(argv: list[str] | None = None) -> int:
     blocked = refused(args.agent, agent, args.watch)
     if blocked:
         p.error(f"agent refusé, modèle exclu ({blocked}) : voir bench/watch.json")
-    context = {"bench_commit": bench_commit(), "tool_version": tool_version(agent)}
+    context = {"bench_commit": bench_commit(), "tool_version": tool_version(agent), "static": not args.no_static}
     if context["bench_commit"] and context["bench_commit"].endswith("-dirty"):
         print("attention : le dépôt a des modifications non commitées (bench_commit « -dirty »)")
     write_meta(args.agent, agent, args.results, context)
@@ -524,8 +703,9 @@ def main(argv: list[str] | None = None) -> int:
         rec = run_task(args.agent, agent, task, args.repeat, args.results, args.keep, context, args.append_run, args.passage)
         passed += rec["passed"]
         last = rec["runs"][-1]
+        attacks = f"  attaques {last['attacks_passed']}/{last['attacks_total']}" if "attacks_total" in last else ""
         print(f"{'réussi ' if rec['passed'] else 'échoué '} {task['id']:<16} {rec['passed_runs']}/{rec['repeat']} passages"
-              f"  tests {last['tests_passed']}/{last['tests_total']}  {last['stage']}  {rec['mean_agent_duration_s']} s")
+              f"  tests {last['tests_passed']}/{last['tests_total']}  {last['stage']}{attacks}  {rec['mean_agent_duration_s']} s")
     print(f"{passed}/{len(tasks)} tâches réussies · résultats dans {args.results / args.agent}")
     return 0
 

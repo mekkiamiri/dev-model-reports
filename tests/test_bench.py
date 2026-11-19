@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "bench"))
 import build_site  # noqa: E402
 import report  # noqa: E402
 import run  # noqa: E402
+import security  # noqa: E402
 
 HAS_JAVA = shutil.which("javac") is not None and shutil.which("java") is not None
 needs_java = unittest.skipUnless(HAS_JAVA, "javac et java nécessaires")
@@ -30,9 +31,9 @@ def quiet(fn, *args, **kwargs):
 class TasksTest(unittest.TestCase):
     def test_structure_of_each_task(self):
         tasks = run.load_tasks()
-        self.assertEqual(5, len(tasks))
+        self.assertEqual(7, len(tasks))
         kinds = sorted(t["kind"] for t in tasks)
-        self.assertEqual(["bug", "prd", "prd", "prd", "refactoring"], kinds)
+        self.assertEqual(["bug", "prd", "prd", "prd", "refactoring", "securite", "securite"], kinds)
         for t in tasks:
             d = t["dir"]
             for key in ("id", "kind", "title", "summary", "hidden_tests"):
@@ -44,13 +45,43 @@ class TasksTest(unittest.TestCase):
             self.assertTrue(any((d / "mutants").iterdir()), t["id"] + " : au moins un mutant")
             if t["kind"] == "prd":
                 self.assertTrue((d / "workspace" / "PRD.md").exists())
+            if t["kind"] in ("prd", "securite"):
                 self.assertTrue((d / "workspace" / "CONTRACT.md").exists())
+
+    def test_attacks_are_declared_like_hidden_tests(self):
+        for t in run.load_tasks():
+            d = t["dir"]
+            self.assertTrue(t.get("attacks"), t["id"] + " : axe sécurité attendu sur les 7 tâches")
+            self.assertTrue((d / "hidden-attacks" / "AttackTests.java").exists(), t["id"])
+            ids = [a["id"] for a in t["attacks"]]
+            self.assertEqual(sorted(ids), sorted(run.declared_attack_ids(t)), t["id"])
+            self.assertEqual(len(ids), len(set(ids)), t["id"])
+            for a in t["attacks"]:
+                self.assertEqual({"id", "famille", "exigee"}, set(a) - {"reference_vulnerable"}, a)
+                self.assertIsInstance(a["exigee"], bool)
+                if a.get("reference_vulnerable"):
+                    self.assertFalse(a["exigee"], "seule une attaque implicite peut être marquée reference_vulnerable")
+            self.assertIn("fuzz", {a["famille"] for a in t["attacks"]}, t["id"])
+            familles = {a["famille"] for a in t["attacks"]}
+            vulns = [p.name for p in (d / "mutants-vuln").iterdir() if p.is_dir()]
+            self.assertTrue(vulns, t["id"])
+            self.assertLessEqual(set(vulns), familles, t["id"])
+            self.assertRegex(run.attacks_fingerprint(t), r"^[0-9a-f]{12}$")
+        self.assertIsNone(run.attacks_fingerprint({"attacks": []}))
+
+    def test_security_tasks_have_mostly_required_attacks(self):
+        for t in run.load_tasks():
+            if t["kind"] == "securite":
+                implicit = [a for a in t["attacks"] if not a["exigee"]]
+                self.assertTrue(1 <= len(implicit) <= 2, t["id"])
 
     def test_workspace_never_contains_hidden_tests(self):
         for t in run.load_tasks():
             for p in (t["dir"] / "workspace").rglob("*"):
                 if p.is_file():
-                    self.assertNotIn("AcceptanceTests", p.read_text(encoding="utf-8"), p)
+                    text = p.read_text(encoding="utf-8")
+                    for secret in ("AcceptanceTests", "AttackTests", "Attaques", run.REF_PACKAGE):
+                        self.assertNotIn(secret, text, p)
 
     def test_unknown_task_rejected(self):
         with self.assertRaises(SystemExit):
@@ -65,7 +96,9 @@ class TasksTest(unittest.TestCase):
     def test_check_reference_passes_start_and_mutants_fail(self):
         ok, out = quiet(run.check_tasks, run.load_tasks())
         self.assertTrue(ok, out)
-        self.assertEqual(5, out.count("OK  "))
+        self.assertEqual(7, out.count("OK  "))
+        self.assertEqual(7, out.count("mutants vulnérables détectés"))
+        self.assertNotIn("non détecté", out)
 
 
 class RunnerTest(unittest.TestCase):
@@ -84,8 +117,10 @@ class RunnerTest(unittest.TestCase):
     def fake(self, *args, **extra):
         return {"label": "faux", "example": True, "cmd": ["{python}", "{bench}/fake_agent.py", *args], **extra}
 
-    def run_agent(self, name, agents, tasks=None, repeat=1):
+    def run_agent(self, name, agents, tasks=None, repeat=1, static=False):
         argv = ["--agent", name, "--config", str(self.config(agents)), "--results", str(self.results), "--repeat", str(repeat)]
+        if not static:
+            argv.append("--no-static")
         if tasks:
             argv += ["--tasks", tasks]
         code, out = quiet(run.main, argv)
@@ -109,6 +144,16 @@ class RunnerTest(unittest.TestCase):
             self.assertTrue(r["example"])
             self.assertTrue((self.results / "ref" / "artifacts" / t["id"] / "run-1" / "src").is_dir())
             self.assertTrue((self.results / "ref" / "transcripts" / f"{t['id']}.run1.txt").exists())
+            # axe sécurité : la référence résiste à toutes les attaques, sauf celles marquées reference_vulnerable
+            run0 = r["runs"][0]
+            self.assertEqual("ok", run0["attacks_stage"])
+            self.assertEqual(len(t["attacks"]), run0["attacks_total"])
+            vulnerable = sorted(a["id"] for a in t["attacks"] if a.get("reference_vulnerable"))
+            self.assertEqual(vulnerable, sorted(run0["attacks_failed"]), t["id"])
+            self.assertEqual(run0["attacks_required_total"], run0["attacks_required_passed"], t["id"])
+            self.assertEqual(run0["attacks_total"], run0["attacks_required_total"] + run0["attacks_implicit_total"])
+            self.assertIsNone(run0["static"])  # --no-static
+            self.assertEqual(run.attacks_fingerprint(t), r["attacks_fingerprint"])
         meta = json.loads((self.results / "ref" / "meta.json").read_text(encoding="utf-8"))
         self.assertTrue(meta["example"])
 
@@ -156,6 +201,92 @@ class RunnerTest(unittest.TestCase):
             r = self.result("cheat", t["id"])
             self.assertFalse(r["passed"], t["id"])
             self.assertIn("pas de ligne RESULT valide", " ".join(r["runs"][0]["failures"]), t["id"])
+            # La fausse ligne ne trompe pas les attaques : toute attaque qui charge la classe piégée échoue,
+            # et le tricheur ne repousse jamais plus d'attaques que la référence (celles qui ne chargent
+            # pas la classe piégée exécutent vraiment le code de la référence).
+            run_ = r["runs"][0]
+            self.assertLess(run_["attacks_passed"], run_["attacks_total"], t["id"])
+            vulnerable = sum(1 for a in t["attacks"] if a.get("reference_vulnerable"))
+            self.assertLessEqual(run_["attacks_passed"], run_["attacks_total"] - vulnerable, t["id"])
+
+    @needs_java
+    def test_fake_vuln_passes_functional_and_fails_attacks(self):
+        agents = run.load_agents(ROOT / "bench" / "agents.example.json")
+        self.run_agent("fake-vuln", {"fake-vuln": agents["fake-vuln"]})
+        for t in run.load_tasks():
+            r = self.result("fake-vuln", t["id"])
+            run0 = r["runs"][0]
+            self.assertTrue(r["passed"], t["id"])
+            first = sorted(p.name for p in (t["dir"] / "mutants-vuln").iterdir() if p.is_dir())[0]
+            families = {a["id"]: a["famille"] for a in t["attacks"]}
+            self.assertIn(first, {families[i] for i in run0["attacks_failed"]}, t["id"])
+            self.assertLess(run0["attacks_passed"], run0["attacks_total"])
+
+    @needs_java
+    def test_attacks_graded_even_if_functional_fails(self):
+        t = run.load_tasks(["secu-jeton"])[0]
+        work = run.prepare_workdir(t)
+        try:
+            shutil.copytree(t["dir"] / "mutants" / "base64-standard", work, dirs_exist_ok=True)
+            shutil.copytree(t["dir"] / "reference" / "src" / "com" / "example" / "token", work / "src" / "com" / "example" / "token",
+                            dirs_exist_ok=True, ignore=shutil.ignore_patterns("TokenService.java"))
+            self.assertFalse(run.grade(t, work)["passed"])
+            g = run.grade_attacks(t, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        self.assertEqual("ok", g["attacks_stage"])
+        self.assertGreater(g["attacks_passed"], 0)
+
+    @needs_java
+    def test_suspicious_code_is_not_attacked(self):
+        t = run.load_tasks(["bug-pagination"])[0]
+        work = run.prepare_workdir(t)
+        try:
+            shutil.copytree(t["dir"] / "reference", work, dirs_exist_ok=True)
+            (work / "src" / "com" / "example" / "paging" / "Hack.java").write_text(
+                "package com.example.paging;\nclass Hack { static { System.setOut(null); } }\n", encoding="utf-8")
+            g = run.grade_attacks(t, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        self.assertEqual("suspect", g["attacks_stage"])
+        self.assertEqual(0, g["attacks_passed"])
+        self.assertEqual(g["attacks_total"], len(g["attacks_failed"]))
+
+    def test_task_without_attacks_has_no_security_axis(self):
+        t = dict(run.load_tasks(["bug-pagination"])[0], attacks=[])
+        self.assertIsNone(run.grade_attacks(t, Path(tempfile.gettempdir())))
+
+    @needs_java
+    def test_runaway_attack_is_a_breach_within_the_delay(self):
+        task_dir = self.tmp / "tasks" / "boucle"
+        shutil.copytree(ROOT / "tasks" / "bug-pagination", task_dir)
+        (task_dir / "hidden-attacks" / "AttackTests.java").write_text("""
+public class AttackTests {
+    static long pile(long n) { return pile(n + 1) + 1; }
+    public static void main(String[] args) {
+        Attaques a = new Attaques(args);
+        a.attaque("boucle", () -> { while (true) { Thread.onSpinWait(); } });
+        a.attaque("pile", () -> pile(0));
+        a.attaque("memoire", () -> { java.util.List<long[]> l = new java.util.ArrayList<>(); while (true) { l.add(new long[1 << 20]); } });
+        a.attaque("ok", () -> Check.eq(1, 1));
+        a.fin();
+    }
+}
+""", encoding="utf-8")
+        t = dict(run.load_tasks(["bug-pagination"])[0], dir=task_dir, timeout_attack_s=2, attacks=[
+            {"id": i, "famille": "test", "exigee": True} for i in ("boucle", "pile", "memoire", "ok")])
+        work = run._overlay(t, task_dir / "reference")
+        try:
+            g = run.grade_attacks(t, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        self.assertEqual(["boucle", "pile", "memoire"], g["attacks_failed"])
+        reasons = " ".join(g["attacks_failures"])
+        self.assertIn("délai dépassé", reasons)
+        self.assertIn("StackOverflowError", reasons)
+        self.assertIn("OutOfMemoryError", reasons)
+        self.assertEqual((1, 4), (g["attacks_passed"], g["attacks_total"]))
+        self.assertLess(g["attacks_duration_s"], 30)
 
     @needs_java
     def test_suspicious_code_is_rejected_before_running(self):
