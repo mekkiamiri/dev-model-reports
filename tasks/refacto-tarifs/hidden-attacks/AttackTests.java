@@ -21,9 +21,9 @@ public class AttackTests {
     /** Même résultat (ou même type d'exception) que l'original, par le service et, pour q > 0, par la règle seule. */
     static void commeOriginal(String type, int q, BigDecimal u, boolean first) {
         String entree = type + " q=" + q + " u=" + u + " first=" + first;
-        Attaques.memeIssue(entree, () -> SERVICE.price(type, q, u, first), () -> ORACLE.price(type, q, u, first));
+        Attaques.memeIssueStricte(entree, () -> SERVICE.price(type, q, u, first), () -> ORACLE.price(type, q, u, first));
         if (q > 0 && type != null && REGLES.containsKey(type)) {
-            Attaques.memeIssue(entree + " (règle seule)", () -> REGLES.get(type).price(q, u, first), () -> ORACLE.price(type, q, u, first));
+            Attaques.memeIssueStricte(entree + " (règle seule)", () -> REGLES.get(type).price(q, u, first), () -> ORACLE.price(type, q, u, first));
         }
     }
 

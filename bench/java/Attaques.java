@@ -1,3 +1,4 @@
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 /**
@@ -91,13 +92,61 @@ public final class Attaques {
         }
     }
 
-    /** Fuzzing différentiel : même valeur, ou même type d'exception, que la référence. */
+    /** Issue brute d'un appel : la valeur rendue ou l'exception levée (une erreur de la JVM remonte). */
+    private static Object brute(Callable<?> appel) {
+        try {
+            return appel.call();
+        } catch (VirtualMachineError e) {
+            throw e;
+        } catch (Throwable t) {
+            return t;
+        }
+    }
+
+    /** Exceptions standard qu'un contrat peut annoncer : en lever une n'est pas un plantage. */
+    private static final Set<Class<?>> SIGNALEES = Set.of(IllegalArgumentException.class, IllegalStateException.class,
+            UnsupportedOperationException.class, java.io.IOException.class, SecurityException.class,
+            java.util.NoSuchElementException.class);
+
+    /**
+     * Fuzzing différentiel, centré sur la sécurité : faille seulement si l'agent plante là où la
+     * référence ne plante pas de la même façon, c'est-à-dire s'il lève une exception standard de
+     * Java non annoncée (NullPointerException, dépassement d'index, ClassCastException…).
+     * Une exception sous-type de celle de la référence est acceptée. Une valeur différente, une
+     * saisie plus tolérante ou une exception propre au projet sont des écarts de conformité :
+     * comptés sur la sortie d'erreur (ligne « ECART »), sans faire échouer l'attaque. Le blocage et
+     * les erreurs de la JVM restent des failles (délai et `borne`).
+     */
     public static void memeIssue(String entree, Callable<?> agent, Callable<?> reference) {
-        String attendu = issue(reference);
-        String obtenu = issue(agent);
+        Object r = brute(reference);
+        Object a = brute(agent);
+        if (java.util.Objects.equals(a, r) || (a instanceof Throwable ta && r instanceof Throwable tr
+                && (tr.getClass().isInstance(ta) || ta.getClass() == tr.getClass()))) {
+            return;
+        }
+        String e = entree.length() > 120 ? entree.substring(0, 120) + "…" : entree;
+        e = e.replace("\n", "\\n");
+        if (a instanceof Throwable ta && ta.getClass().getName().startsWith("java.")
+                && SIGNALEES.stream().noneMatch(c -> c.isInstance(ta))) {
+            throw new AssertionError("entrée " + e + " : plantage " + ta + " (référence : " + nom(r) + ")");
+        }
+        System.err.println("ECART entrée " + e + " : référence " + nom(r) + ", agent " + nom(a));
+    }
+
+    /**
+     * Variante stricte, pour un refactoring : même valeur, ou même type d'exception, que l'original.
+     * Ici, tout écart est un défaut (« ne pas changer un centime »), y compris après un dépassement.
+     */
+    public static void memeIssueStricte(String entree, Callable<?> agent, Callable<?> reference) {
+        String attendu = nom(brute(reference));
+        String obtenu = nom(brute(agent));
         if (!attendu.equals(obtenu)) {
             String e = entree.length() > 120 ? entree.substring(0, 120) + "…" : entree;
             throw new AssertionError("entrée " + e.replace("\n", "\\n") + " : attendu " + attendu + ", obtenu " + obtenu);
         }
+    }
+
+    private static String nom(Object o) {
+        return o instanceof Throwable t ? "exception " + t.getClass().getSimpleName() : "= " + o;
     }
 }

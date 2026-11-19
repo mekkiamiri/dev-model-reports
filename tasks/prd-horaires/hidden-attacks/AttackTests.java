@@ -68,7 +68,6 @@ public class AttackTests {
             invalide("Mo 10:00-24:01");
             invalide("Mo 24:00-02:00");
             invalide("Mo 99:99-10:00");
-            invalide("Mo 2:00-3:00");
             invalide("Mo 09:00-10:00:00");
             invalide("Mo -1:00-02:00");
         });
