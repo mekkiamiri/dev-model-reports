@@ -20,6 +20,7 @@ Support du talk « Ce que les benchmarks ne disent pas : N modèles testés » (
 - **Grille de ressenti** fixe à 7 critères : `RESSENTI.md`.
 - **Rapport** `bench/report.py` : `reports/<modèle>-<date>.md` et `.html`.
 - **Protocole** `PROTOCOLE.md` et **routine** `ROUTINE-48H.md`.
+- **Routine automatique 48 h** `bench/routine.py` (launchd, toutes les heures) : détection des nouveaux modèles dans ai-radar (`bench/radar.py`, règles dans `bench/watch.json`, Claude Fable toujours exclu), 3 passages espacés ajoutés au même résultat (`run.py --append-run`), rapport, page et notification macOS (`bench/notify.py`).
 - **CI** : vérification des tâches, tests du lanceur avec de faux agents (aucun modèle n'est appelé en CI), page à jour.
 
 ## Lancer
@@ -41,6 +42,20 @@ python3 bench/report.py --model claude-opus-5-5
 python3 bench/build_site.py
 ```
 
+## Routine automatique
+
+```bash
+python3 bench/radar.py --list                  # modèles que la routine voit dans ai-radar
+bench/install_routine.sh --dry-run             # plist launchd (toutes les heures), sans l'installer
+bench/install_routine.sh                       # installer ; --uninstall pour l'enlever
+python3 bench/routine.py status                # état de chaque modèle, prochaine échéance
+python3 bench/routine.py skip <modèle>         # annuler (1 h après la notification de détection)
+python3 bench/routine.py add <id ai-radar>     # forcer un modèle, même hors fenêtre (« hors délai »)
+python3 bench/routine.py run-now <modèle>      # étape suivante tout de suite (reprise après échec)
+```
+
+La grille de ressenti, la relecture et la publication restent humaines (`ROUTINE-48H.md`).
+
 ## État
 
 | Élément | État |
@@ -54,6 +69,8 @@ python3 bench/build_site.py
 | Rapport Markdown et HTML | fait ; exemple avec faux agent |
 | Premier rapport sur un vrai modèle | **à mesurer** (prochaine sortie) |
 | Isolation forte (conteneur sans le dépôt) | documentée dans PROTOCOLE.md, intégration au lanceur à faire |
+| Routine 48 h (détection ai-radar, 3 passages, budget, relances, rapport, notification) | faite, testée avec horloge injectée et faux exécuteur ; **launchd pas encore installé, jamais lancée sur un vrai modèle** |
+| Gabarits `codex` et `gemini` (`watch.json`), lecture `gemini-json` | options vérifiées dans `--help` ; format JSON de `gemini` **à confirmer au premier passage** |
 | Tâche « comprendre une appli legacy » | à faire (piste : réutiliser `legacy-context-bench`) |
 | 3 rapports publiés avant de soumettre le talk | à faire |
 
@@ -64,6 +81,10 @@ tasks/<tâche>/      task.json, workspace/ (vu par l'agent), hidden/ (tests cach
 bench/run.py        lanceur et notation
 bench/report.py     rapport Markdown + HTML
 bench/build_site.py données de la page (docs/data.js) et copie des rapports
+bench/radar.py      détection des nouveaux modèles dans ai-radar (lecture seule)
+bench/routine.py    routine 48 h (état dans results/_routine/, hors git)
+bench/watch.json    éditeurs suivis, gabarits d'agent, exclusions, budget, calendrier
+bench/notify.py     notification macOS (terminal-notifier, sinon osascript), ntfy optionnel
 bench/grille.json   grille de ressenti (source pour les scripts)
 results/<modèle>/   résultats, artefacts, résumés des agents, ressenti.json
 reports/            rapports générés

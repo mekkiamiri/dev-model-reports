@@ -6,3 +6,5 @@ out/
 # Configuration locale des agents (copie de bench/agents.example.json)
 bench/agents.json
 tasks-private/
+# État, journal et verrou de la routine 48 h (propres à la machine)
+results/_routine/
