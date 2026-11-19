@@ -1,0 +1,220 @@
+{
+  "schema": 2,
+  "model": "claude-opus-5-5",
+  "label": "Claude Opus 5.5 via Claude Code (claude -p)",
+  "example": false,
+  "task": "prd-config",
+  "task_set": "public",
+  "kind": "prd",
+  "title": "Configuration en couches avec variables",
+  "task_fingerprint": "2bfda8f9d336",
+  "hidden_tests": 32,
+  "attacks_fingerprint": "18948ad4485d",
+  "attacks": [
+    {
+      "id": "expansion-exponentielle",
+      "famille": "expansion",
+      "exigee": true
+    },
+    {
+      "id": "expansion-geante",
+      "famille": "expansion",
+      "exigee": false,
+      "reference_vulnerable": true
+    },
+    {
+      "id": "cycle-long",
+      "famille": "cycle",
+      "exigee": true
+    },
+    {
+      "id": "chaine-longue-sans-cycle",
+      "famille": "cycle",
+      "exigee": true
+    },
+    {
+      "id": "cle-geante",
+      "famille": "taille",
+      "exigee": true
+    },
+    {
+      "id": "valeur-geante",
+      "famille": "taille",
+      "exigee": true
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ],
+  "bench_commit": "cfp-devoxxfr-2027-16-g87d941f",
+  "tool_version": "2.1.328 (Claude Code)",
+  "date": "2026-11-19T14:45:23+00:00",
+  "repeat": 3,
+  "passed_runs": 3,
+  "passed": true,
+  "external_failures": 0,
+  "mean_agent_duration_s": 78.22,
+  "total_cost_usd": 0.8567,
+  "cost_known_runs": 3,
+  "runs": [
+    {
+      "run": 1,
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 32,
+      "tests_total": 32,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 72.8,
+      "grading_duration_s": 0.55,
+      "tokens": {
+        "input": 22,
+        "output": 7830,
+        "cache_read": 119256,
+        "cache_write": 15685
+      },
+      "cost_usd": 0.2589642,
+      "turns": 16,
+      "attacks_stage": "ok",
+      "attacks_passed": 6,
+      "attacks_total": 7,
+      "attacks_failed": [
+        "expansion-geante"
+      ],
+      "attacks_failures": [
+        "expansion-geante : erreur de la JVM : OutOfMemoryError"
+      ],
+      "attacks_required_passed": 6,
+      "attacks_required_total": 6,
+      "attacks_implicit_passed": 0,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.54,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      },
+      "regraded_at": "2026-11-19T14:42:42+00:00",
+      "date": "2026-11-19T09:46:25+00:00",
+      "date_source": "heure d'écriture du transcript (passage lancé avant la routine)",
+      "passage": 1
+    },
+    {
+      "run": 2,
+      "passage": 2,
+      "date": "2026-11-19T14:28:58+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-15-g3abd27d",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 32,
+      "tests_total": 32,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 84.35,
+      "grading_duration_s": 0.59,
+      "tokens": {
+        "input": 24,
+        "output": 9418,
+        "cache_read": 138382,
+        "cache_write": 16760
+      },
+      "cost_usd": 0.29993240000000004,
+      "turns": 17,
+      "attacks_stage": "ok",
+      "attacks_passed": 6,
+      "attacks_total": 7,
+      "attacks_failed": [
+        "expansion-geante"
+      ],
+      "attacks_failures": [
+        "expansion-geante : erreur de la JVM : OutOfMemoryError"
+      ],
+      "attacks_required_passed": 6,
+      "attacks_required_total": 6,
+      "attacks_implicit_passed": 0,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.52,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      },
+      "regraded_at": "2026-11-19T14:42:42+00:00"
+    },
+    {
+      "run": 3,
+      "passage": 3,
+      "date": "2026-11-19T14:45:23+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-16-g87d941f",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 32,
+      "tests_total": 32,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 77.5,
+      "grading_duration_s": 0.54,
+      "tokens": {
+        "input": 18,
+        "output": 8762,
+        "cache_read": 84283,
+        "cache_write": 21132
+      },
+      "cost_usd": 0.2978286,
+      "turns": 13,
+      "attacks_stage": "ok",
+      "attacks_passed": 6,
+      "attacks_total": 7,
+      "attacks_failed": [
+        "expansion-geante"
+      ],
+      "attacks_failures": [
+        "expansion-geante : erreur de la JVM : OutOfMemoryError"
+      ],
+      "attacks_required_passed": 6,
+      "attacks_required_total": 6,
+      "attacks_implicit_passed": 0,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.53,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      }
+    }
+  ]
+}

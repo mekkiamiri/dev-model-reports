@@ -1,0 +1,202 @@
+{
+  "schema": 2,
+  "model": "claude-opus-5-5",
+  "label": "Claude Opus 5.5 via Claude Code (claude -p)",
+  "example": false,
+  "task": "prd-horaires",
+  "task_set": "public",
+  "kind": "prd",
+  "title": "Horaires d'ouverture d'une boutique",
+  "task_fingerprint": "f0a3181968ce",
+  "hidden_tests": 41,
+  "attacks_fingerprint": "cd80b58a17e5",
+  "attacks": [
+    {
+      "id": "regles-nombreuses",
+      "famille": "volume",
+      "exigee": true
+    },
+    {
+      "id": "heures-hors-bornes",
+      "famille": "heures",
+      "exigee": true
+    },
+    {
+      "id": "syntaxe-mal-formee",
+      "famille": "syntaxe",
+      "exigee": true
+    },
+    {
+      "id": "entree-geante",
+      "famille": "syntaxe",
+      "exigee": true
+    },
+    {
+      "id": "instant-extreme",
+      "famille": "bornes",
+      "exigee": false
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ],
+  "bench_commit": "cfp-devoxxfr-2027-16-g87d941f",
+  "tool_version": "2.1.328 (Claude Code)",
+  "date": "2026-11-19T14:48:38+00:00",
+  "repeat": 3,
+  "passed_runs": 3,
+  "passed": true,
+  "external_failures": 0,
+  "mean_agent_duration_s": 96.71,
+  "total_cost_usd": 1.0343,
+  "cost_known_runs": 3,
+  "runs": [
+    {
+      "run": 1,
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 41,
+      "tests_total": 41,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 91.23,
+      "grading_duration_s": 0.63,
+      "tokens": {
+        "input": 20,
+        "output": 9816,
+        "cache_read": 110384,
+        "cache_write": 14000
+      },
+      "cost_usd": 0.2884768,
+      "turns": 13,
+      "attacks_stage": "ok",
+      "attacks_passed": 6,
+      "attacks_total": 6,
+      "attacks_failed": [],
+      "attacks_failures": [],
+      "attacks_required_passed": 5,
+      "attacks_required_total": 5,
+      "attacks_implicit_passed": 1,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.79,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      },
+      "regraded_at": "2026-11-19T14:42:50+00:00",
+      "date": "2026-11-19T09:49:25+00:00",
+      "date_source": "heure d'écriture du transcript (passage lancé avant la routine)",
+      "passage": 1
+    },
+    {
+      "run": 2,
+      "passage": 2,
+      "date": "2026-11-19T14:32:43+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-15-g3abd27d",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 41,
+      "tests_total": 41,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 115.34,
+      "grading_duration_s": 0.54,
+      "tokens": {
+        "input": 22,
+        "output": 13386,
+        "cache_read": 133338,
+        "cache_write": 31730
+      },
+      "cost_usd": 0.45312559999999996,
+      "turns": 13,
+      "attacks_stage": "ok",
+      "attacks_passed": 6,
+      "attacks_total": 6,
+      "attacks_failed": [],
+      "attacks_failures": [],
+      "attacks_required_passed": 5,
+      "attacks_required_total": 5,
+      "attacks_implicit_passed": 1,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.83,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      },
+      "regraded_at": "2026-11-19T14:42:50+00:00"
+    },
+    {
+      "run": 3,
+      "passage": 3,
+      "date": "2026-11-19T14:48:38+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-16-g87d941f",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 41,
+      "tests_total": 41,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 83.57,
+      "grading_duration_s": 0.48,
+      "tokens": {
+        "input": 20,
+        "output": 8836,
+        "cache_read": 100735,
+        "cache_write": 19148
+      },
+      "cost_usd": 0.29268700000000003,
+      "turns": 10,
+      "attacks_stage": "ok",
+      "attacks_passed": 6,
+      "attacks_total": 6,
+      "attacks_failed": [],
+      "attacks_failures": [],
+      "attacks_required_passed": 5,
+      "attacks_required_total": 5,
+      "attacks_implicit_passed": 1,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.97,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "grille_version": 1,
+  "evaluator": "Mekki Amiri",
+  "date": null,
+  "criteria": {
+    "lisibilite": {
+      "score": null,
+      "evidence": ""
+    },
+    "conventions": {
+      "score": null,
+      "evidence": ""
+    },
+    "perimetre": {
+      "score": null,
+      "evidence": ""
+    },
+    "questions": {
+      "score": null,
+      "evidence": ""
+    },
+    "honnetete": {
+      "score": null,
+      "evidence": ""
+    },
+    "verification": {
+      "score": null,
+      "evidence": ""
+    },
+    "economie": {
+      "score": null,
+      "evidence": ""
+    }
+  }
+}

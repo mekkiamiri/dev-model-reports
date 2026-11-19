@@ -148,7 +148,14 @@ window.BENCH = {
    }
   ]
  },
- "reports": [],
+ "reports": [
+  {
+   "model": "claude-opus-5-5",
+   "label": "Claude Opus 5.5 via Claude Code (claude -p)",
+   "date": "2026-11-19",
+   "href": "rapports/claude-opus-5-5-2026-11-19.html"
+  }
+ ],
  "examples": [
   {
    "model": "fake-reference",
