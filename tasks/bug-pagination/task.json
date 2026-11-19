@@ -5,5 +5,33 @@
   "summary": "Un ticket décrit une page vide en trop ; la correction évidente casse un cas documenté.",
   "timeout_agent_s": 1200,
   "timeout_tests_s": 60,
-  "hidden_tests": 16
+  "hidden_tests": 16,
+  "timeout_attack_s": 8,
+  "attacks": [
+    {
+      "id": "taille-nulle",
+      "famille": "taille",
+      "exigee": false
+    },
+    {
+      "id": "taille-negative-extreme",
+      "famille": "taille",
+      "exigee": true
+    },
+    {
+      "id": "taille-max",
+      "famille": "debordement",
+      "exigee": true
+    },
+    {
+      "id": "page-hors-bornes-extreme",
+      "famille": "debordement",
+      "exigee": true
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ]
 }
