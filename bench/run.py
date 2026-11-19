@@ -48,7 +48,10 @@ SUSPICIOUS = [
     (re.compile(r"System\s*\.\s*in\b"), "lecture de l'entrée standard"),
 ]
 # Variables transmises à l'agent par défaut ; le reste est retiré (dont PWD et OLDPWD).
-ENV_BASE = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR", "JAVA_HOME"]
+ENV_BASE = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR", "JAVA_HOME",
+            # réseau de la machine (proxy, autorité de certification) : sans eux, aucun outil ne joint son API
+            "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+            "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"]
 
 PROMPT = """Tu travailles dans le dossier courant, qui contient une tâche de développement.
 Lis TASK.md, puis les autres fichiers .md, et réalise la tâche sans poser de question :
@@ -232,7 +235,8 @@ def agent_env(agent: dict, workdir: Path) -> dict:
 
 def parse_usage(kind: str, stdout: str) -> dict:
     """Tokens, coût, tours, message final et erreur éventuelle, si la commande les fournit."""
-    usage = {"tokens": None, "cost_usd": None, "turns": None, "final_message": None, "agent_error": None}
+    usage = {"tokens": None, "cost_usd": None, "turns": None, "final_message": None, "agent_error": None,
+             "external_failure": False}
     text = stdout.strip()
     if kind == "claude-json":
         data = None
@@ -252,8 +256,13 @@ def parse_usage(kind: str, stdout: str) -> dict:
         usage["turns"] = data.get("num_turns")
         usage["final_message"] = data.get("result")
         subtype = data.get("subtype")
-        if data.get("is_error") or (subtype not in (None, "success")):
-            usage["agent_error"] = subtype or "is_error"
+        if data.get("is_error"):
+            # « subtype: success » avec is_error vrai : l'outil n'a pas pu travailler (connexion, quota…)
+            usage["agent_error"] = subtype if subtype not in (None, "success") else "is_error"
+            spent = sum(v or 0 for v in (usage["tokens"] or {}).values())
+            usage["external_failure"] = spent == 0
+        elif subtype not in (None, "success"):
+            usage["agent_error"] = subtype
     elif kind == "codex-jsonl":
         totals, turns = {"input": 0, "output": 0, "cache_read": 0}, 0
         for line in text.splitlines():
@@ -333,7 +342,7 @@ def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, kee
             "tests_passed": graded["tests_passed"], "tests_total": graded["tests_total"],
             "failures": graded["failures"], "compile_errors": graded["compile_errors"],
             "agent_exit_code": agent_out["code"], "agent_timed_out": agent_out["timed_out"],
-            "agent_error": usage["agent_error"], "agent_duration_s": agent_out["duration"],
+            "agent_error": usage["agent_error"], "external_failure": usage["external_failure"], "agent_duration_s": agent_out["duration"],
             "grading_duration_s": graded["grading_duration_s"],
             "tokens": usage["tokens"], "cost_usd": usage["cost_usd"], "turns": usage["turns"],
         })

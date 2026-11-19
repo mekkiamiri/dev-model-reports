@@ -83,7 +83,10 @@ def fmt_tests(task: dict) -> str:
     """Tests passés à chaque passage, par exemple « 25/25, 24/25, 25/25 »."""
     parts = []
     for r in task["runs"]:
-        parts.append(f"{r['tests_passed']}/{r['tests_total']}" if r["tests_total"] else r["stage"])
+        cell = f"{r['tests_passed']}/{r['tests_total']}" if r["tests_total"] else r["stage"]
+        if r.get("external_failure"):
+            cell += " (échec extérieur : l'outil n'a pas travaillé)"
+        parts.append(cell)
     return ", ".join(parts)
 
 

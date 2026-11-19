@@ -146,7 +146,7 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(Path(seen["cwd"]).resolve(), Path(env.get("PWD", "")).resolve())
             for key, value in env.items():
                 self.assertNotIn(str(ROOT), value, key)
-            self.assertLessEqual(set(env) - {"PWD", "__CF_USER_TEXT_ENCODING", "PYTHONIOENCODING"},
+            self.assertLessEqual(set(env) - {"PWD", "__CF_USER_TEXT_ENCODING", "PYTHONIOENCODING", "LC_CTYPE"},
                                  set(run.ENV_BASE) | {"__PYVENV_LAUNCHER__"})
 
     @needs_java
@@ -263,6 +263,30 @@ class UsageTest(unittest.TestCase):
         self.assertEqual("error_max_turns", u["agent_error"])
         self.assertEqual(0.4213, u["cost_usd"])
         self.assertIsNone(run.parse_usage("claude-json", self.SAMPLE)["agent_error"])
+
+    # Sortie réelle du premier passage (19/11/2026) : connexion absente, aucun token dépensé
+    NOT_LOGGED_IN = ('{"total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,'
+                     '"cache_read_input_tokens":0,"output_tokens":0},"modelUsage":{},"terminal_reason":"api_error",'
+                     '"is_error":true,"num_turns":1,"subtype":"success","result":"Not logged in · Please run /login",'
+                     '"type":"result"}')
+
+    def test_not_logged_in_is_external_failure(self):
+        u = run.parse_usage("claude-json", self.NOT_LOGGED_IN)
+        self.assertEqual("is_error", u["agent_error"])
+        self.assertTrue(u["external_failure"])
+
+    def test_model_error_with_tokens_is_not_external(self):
+        data = json.loads(self.SAMPLE)
+        data.update(is_error=True, subtype="error_max_turns")
+        self.assertFalse(run.parse_usage("claude-json", json.dumps(data))["external_failure"])
+
+    def test_network_env_is_kept(self):
+        import os
+        os.environ["HTTPS_PROXY"] = "http://proxy.exemple:3128"
+        try:
+            self.assertEqual("http://proxy.exemple:3128", run.agent_env({}, Path("/tmp"))["HTTPS_PROXY"])
+        finally:
+            del os.environ["HTTPS_PROXY"]
 
     def test_codex_jsonl(self):
         out = "\n".join([
