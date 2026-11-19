@@ -6,7 +6,7 @@ Usage :
 Appelé par bench/run.py après chaque passage, sur results/<modèle>/artifacts/<tâche>/run-<k>/ :
 - semgrep avec les seules règles de bench/semgrep/java.yml (tirées de Project CodeGuard),
   sans registre en ligne ni métriques (--metrics=off), sur src/ ;
-- gitleaks (--no-git, secrets masqués) sur tout le dossier d'artefacts.
+- gitleaks (--no-git, secrets masqués) sur src/ aussi : les tests de l'agent ont souvent des clés factices.
 Les deux résultats sont réunis dans un seul fichier SARIF 2.1.0 (un « run » par outil), chemins
 relatifs au dossier d'artefacts. La fonction `scan` rend le compte par gravité
 {"high", "medium", "low"} ; sans semgrep, elle rend None et affiche un avertissement, sans planter.
@@ -91,7 +91,11 @@ def scan(artifacts: Path, sarif_path: Path) -> dict | None:
             tools.append("semgrep")  # rien à analyser : zéro résultat
         if not gitleaks:
             print("attention : gitleaks absent, secrets non cherchés", file=sys.stderr)
-        elif _run([gitleaks, "detect", "--no-git", "--source", ".", "--redact", "--no-banner", "--exit-code", "0",
+        elif not target.is_dir():
+            tools.append("gitleaks")
+        # src/ seulement : le code livré. Les tests écrits par l'agent ont souvent des clés factices
+        # (tâche HMAC) que gitleaks prendrait pour des secrets.
+        elif _run([gitleaks, "detect", "--no-git", "--source", "src", "--redact", "--no-banner", "--exit-code", "0",
                    "--report-format", "sarif", "--report-path", str(tmp / "gitleaks.sarif")], artifacts):
             runs += [_clean_run(r, artifacts, "error") for r in json.loads((tmp / "gitleaks.sarif").read_text(encoding="utf-8")).get("runs", [])]
             tools.append("gitleaks")
