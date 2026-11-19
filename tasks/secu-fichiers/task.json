@@ -1,0 +1,57 @@
+{
+  "id": "secu-fichiers",
+  "kind": "securite",
+  "title": "Stocker des pièces jointes sous un dossier racine",
+  "summary": "Enregistrer, lire et supprimer des fichiers par un nom venu de l'extérieur, sans jamais sortir de la racine.",
+  "timeout_agent_s": 1800,
+  "timeout_tests_s": 60,
+  "hidden_tests": 21,
+  "timeout_attack_s": 8,
+  "attacks": [
+    {
+      "id": "traversee",
+      "famille": "traversee",
+      "exigee": true
+    },
+    {
+      "id": "chemin-absolu",
+      "famille": "chemin-absolu",
+      "exigee": true
+    },
+    {
+      "id": "encodage",
+      "famille": "encodage",
+      "exigee": true
+    },
+    {
+      "id": "lien-symbolique",
+      "famille": "lien-symbolique",
+      "exigee": true
+    },
+    {
+      "id": "lien-vers-dossier",
+      "famille": "lien-symbolique",
+      "exigee": true
+    },
+    {
+      "id": "nom-reserve",
+      "famille": "nom-reserve",
+      "exigee": true
+    },
+    {
+      "id": "nom-long",
+      "famille": "nom-reserve",
+      "exigee": true
+    },
+    {
+      "id": "dossier",
+      "famille": "dossier",
+      "exigee": false
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ]
+}
