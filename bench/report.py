@@ -168,6 +168,68 @@ def header_lines(meta: dict, s: dict) -> list[str]:
     ]
 
 
+# ---------------------------------------------------------------- calendrier des passages (routine 48 h)
+
+RESSENTI_BANNER = "Ressenti à noter : la grille (RESSENTI.md) n'est pas encore remplie pour ce modèle."
+
+
+def _time(value):
+    if not value:
+        return None
+    try:
+        t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def calendar(data: dict) -> dict:
+    """Passages datés (H + x h, H = sortie du modèle), hors délai, modèles réellement utilisés."""
+    h = _time(data["meta"].get("release_date"))
+    starts: dict[int, dt.datetime] = {}
+    used: set[str] = set()
+    for t in data["tasks"]:
+        for r in t["runs"]:
+            used.update(r.get("models_used") or [])
+            when = _time(r.get("date"))
+            if when:
+                k = r.get("passage") or r["run"]
+                starts[k] = min(starts.get(k, when), when)
+    rows = [[f"Passage {k}", when.strftime("%Y-%m-%d %H:%M UTC"),
+             f"H + {(when - h).total_seconds() / 3600:.0f} h" if h else "date de sortie inconnue"]
+            for k, when in sorted(starts.items())]
+    late = bool(data["meta"].get("hors_delai")) or bool(h and starts and max(starts.values()) > h + dt.timedelta(hours=48))
+    return {"rows": rows, "late": late, "models_used": sorted(used),
+            "ressenti_missing": data["ressenti"] is None and not data["meta"].get("example")}
+
+
+CALENDAR_HEADER = ["Passage", "Début", "Depuis la sortie"]
+LATE_NOTE = "Hors délai : au moins un passage a eu lieu plus de 48 h après la sortie du modèle."
+
+
+def calendar_markdown(data: dict) -> str:
+    c = calendar(data)
+    if not c["rows"]:
+        return ""
+    parts = ["## Calendrier des passages\n"]
+    if c["late"]:
+        parts.append(f"**{LATE_NOTE}**\n")
+    parts.append(md_table(CALENDAR_HEADER, c["rows"]) + "\n")
+    if c["models_used"]:
+        parts.append("Modèles réellement utilisés (déclarés par l'outil) : " + ", ".join(f"`{m}`" for m in c["models_used"]) + "\n")
+    return "\n".join(parts)
+
+
+def calendar_html(data: dict) -> str:
+    c, e = calendar(data), html.escape
+    if not c["rows"]:
+        return ""
+    late = f"<p><b>{e(LATE_NOTE)}</b></p>" if c["late"] else ""
+    used = (f"<p class='muted'>Modèles réellement utilisés (déclarés par l'outil) : {e(', '.join(c['models_used']))}</p>"
+            if c["models_used"] else "")
+    return f"<h2>Calendrier des passages</h2>{late}{html_table(CALENDAR_HEADER, c['rows'])}{used}"
+
+
 # ---------------------------------------------------------------- Markdown
 
 def md_table(header: list[str], rows: list[list[str]]) -> str:
@@ -182,10 +244,14 @@ def to_markdown(data: dict, date: str) -> str:
     parts = []
     if meta.get("example"):
         parts.append(f"> **{EXAMPLE_BANNER}**\n")
+    if calendar(data)["ressenti_missing"]:
+        parts.append(f"> **{RESSENTI_BANNER}**\n")
     parts.append(f"# {meta['label']} : rapport du {date}\n")
     parts.append("\n".join("- " + l for l in header_lines(meta, s)) + "\n")
     parts.append("## Résultats par tâche\n")
     parts.append(md_table(TASK_HEADER, task_rows(data)) + "\n")
+    if calendar_markdown(data):
+        parts.append(calendar_markdown(data))
     fails = failures(data)
     if fails:
         parts.append("## Ce qui a échoué\n")
@@ -235,6 +301,8 @@ def to_html(data: dict, date: str) -> str:
     e = html.escape
     meta, s = data["meta"], summary(data)
     banner = f'<div class="banner">{e(EXAMPLE_BANNER)}</div>' if meta.get("example") else ""
+    if calendar(data)["ressenti_missing"]:
+        banner += f'<div class="banner">{e(RESSENTI_BANNER)}</div>'
     fails = "".join(
         f"<li><b>{e(t)}</b> : " + " ; ".join(f"<code>{e(i)}</code>" for i in items) + "</li>" for t, items in failures(data)
     )
@@ -253,6 +321,7 @@ def to_html(data: dict, date: str) -> str:
 <div><b>{e(', '.join(map(str, s['repeat'])))}</b><span>passage(s) par tâche</span></div></div>
 <h2>Résultats par tâche</h2>
 {html_table(TASK_HEADER, task_rows(data))}
+{calendar_html(data)}
 {'<h2>Ce qui a échoué</h2><ul>' + fails + '</ul>' if fails else ''}
 <h2>Ressenti (grille v{data['grille']['version']})</h2>{who}
 {html_table(["Critère", "Note", "Preuve"], ressenti_rows(data))}
