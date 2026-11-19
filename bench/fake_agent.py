@@ -8,6 +8,9 @@ Usage (lancé par bench/run.py, dossier courant = dossier de travail de la tâch
                                            reçu et le contenu du dossier parent (agent espion)
   fake_agent.py cheat <dossier>            copie la référence puis y injecte une fausse ligne
                                            « RESULT » et un arrêt brutal : doit être noté en échec
+  fake_agent.py copy-vuln <dossier>        copie la référence puis le premier mutant vulnérable
+                                           (mutants-vuln/ voisin de la référence) : réussit les tests
+                                           cachés, tombe sur des attaques
 
 Ce n'est pas un modèle : un rapport produit avec ce faux agent est un exemple de format.
 """
@@ -29,6 +32,15 @@ def main(argv: list[str]) -> int:
     if mode == "copy-reference":
         shutil.copytree(argv[1], here, dirs_exist_ok=True)
         print("Faux agent : solution de référence copiée. Aucun modèle n'a été appelé.")
+    elif mode == "copy-vuln":
+        reference = Path(argv[1])
+        shutil.copytree(reference, here, dirs_exist_ok=True)
+        vulns = sorted(p for p in (reference.parent / "mutants-vuln").glob("*") if p.is_dir())
+        if vulns:
+            shutil.copytree(vulns[0], here, dirs_exist_ok=True)
+            print(f"Faux agent vulnérable : référence et mutant {vulns[0].name} copiés. Aucun modèle n'a été appelé.")
+        else:
+            print("Faux agent vulnérable : pas de mutant vulnérable, référence seule copiée.")
     elif mode == "noop":
         print("Faux agent : rien fait.")
     elif mode == "sleep":

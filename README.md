@@ -17,6 +17,7 @@ Support du talk « Ce que les benchmarks ne disent pas : N modèles testés » (
   - 1 refactoring (`refacto-tarifs`).
 - **Lanceur** `bench/run.py` : dossier de travail neuf par passage (hors du dépôt, environnement épuré), agent appelé par une commande configurable (`claude -p …`, `codex exec …`, réglages de la machine ignorés), tests cachés appliqués ensuite avec une note infalsifiable (jeton aléatoire par passage, nombre de tests attendu), résultat dans `results/<modèle>/<tâche>.json` avec version de l'outil, commit du banc et empreinte de la tâche.
 - **Lot de tâches privé** `tasks-private/` (ignoré par git, même format) pour les rapports publics.
+- **Axe sécurité** : attaques cachées (exigées / implicites), mutants vulnérables, fuzzing différentiel, semgrep et gitleaks hors ligne, et 2 tâches dédiées (`secu-fichiers`, `secu-jeton`). Voir PROTOCOLE.md.
 - **Grille de ressenti** fixe à 7 critères : `RESSENTI.md`.
 - **Rapport** `bench/report.py` : `reports/<modèle>-<date>.md` et `.html`.
 - **Protocole** `PROTOCOLE.md` et **routine** `ROUTINE-48H.md`.

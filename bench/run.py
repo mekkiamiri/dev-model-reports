@@ -469,7 +469,7 @@ def run_task(name: str, agent: dict, task: dict, repeat: int, results: Path, kee
         "task": task["id"], "task_set": task["set"], "kind": task["kind"], "title": task["title"],
         "task_fingerprint": fingerprint(task), "hidden_tests": task.get("hidden_tests"),
         "attacks_fingerprint": attacks_fingerprint(task),
-        "attacks": [{k: a[k] for k in ("id", "famille", "exigee") if k in a} for a in task.get("attacks") or []],
+        "attacks": [{k: a[k] for k in ("id", "famille", "exigee", "reference_vulnerable") if k in a} for a in task.get("attacks") or []],
         "bench_commit": context["bench_commit"], "tool_version": context["tool_version"],
         "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "repeat": repeat, "passed_runs": sum(r["passed"] for r in runs), "passed": all(r["passed"] for r in runs),

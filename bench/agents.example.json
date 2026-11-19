@@ -31,6 +31,17 @@
     ],
     "usage": "none"
   },
+  "fake-vuln": {
+    "label": "EXEMPLE : faux agent vulnérable, copie un mutant vulnérable (pas un vrai modèle)",
+    "example": true,
+    "cmd": [
+      "{python}",
+      "{bench}/fake_agent.py",
+      "copy-vuln",
+      "{reference}"
+    ],
+    "usage": "none"
+  },
   "claude-opus-5-5": {
     "label": "Claude Opus 5.5 via Claude Code (claude -p)",
     "release_date": null,
