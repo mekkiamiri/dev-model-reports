@@ -429,6 +429,26 @@ class RoutineTest(unittest.TestCase):
         self.clock.t = T0 + 6 * HOUR
         quiet(self.routine().run_now, "gpt-6-2-astra")
         self.assertEqual("passage1", self.routine().state["models"]["gpt-6-2-astra"]["state"])
+        # la reprise ne relance que les tâches en échec extérieur, sans doubler celles déjà faites
+        self.assertIn("--tasks", [a for s, a in self.runner.calls if s == "run.py"][-1])
+
+    def test_launcher_error_is_not_taken_for_a_network_failure(self):
+        calls = []
+        self.runner = lambda argv, cwd, log: calls.append(argv) or 2  # run.py refuse, n'écrit rien
+        self.tick(1)  # détection, fenêtre d'annulation
+        self.assertEqual("echec_lanceur", self.tick(2)["gpt-6-2-astra"]["state"])
+        self.assertEqual(1, len(calls))
+        self.assertIn("Erreur du lanceur", self.sent[-1][0])
+        self.tick(3)
+        self.assertEqual(1, len(calls))  # pas de relance automatique
+
+    def test_add_refuses_a_model_with_manual_runs(self):
+        f = self.tmp / "results" / "gemini-4-carbon" / "t1.json"
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps({"runs": [{"run": 1, "passed": True}]}), encoding="utf-8")
+        code, out = quiet(self.routine().add, "model:google/gemini-4-carbon")
+        self.assertEqual(1, code)
+        self.assertIn("à la main", out)
 
     def test_external_failure_then_success_and_model_failure_not_retried(self):
         self.runner.external = [True, False]

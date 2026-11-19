@@ -37,7 +37,7 @@ import notify as notify_mod  # noqa: E402
 import radar  # noqa: E402
 
 PASSES = 3
-TERMINAL = {"notifie", "annule", "budget_depasse", "non_lancable", "echec_exterieur"}
+TERMINAL = {"notifie", "annule", "budget_depasse", "non_lancable", "echec_exterieur", "echec_lanceur"}
 H = dt.timedelta(hours=1)
 
 
@@ -322,7 +322,15 @@ class Routine:
             new = {tid: after[tid][len(before[tid]):] for tid in ids}
             failed = [tid for tid, runs in new.items() if not runs or any(r.get("external_failure") for r in runs)]
             if code != 0 and all(not runs for runs in new.values()):
-                failed = ids  # sortie illisible ou lanceur en échec : tout le lot est à refaire
+                # Aucun passage écrit : le lanceur a refusé ou planté (empreinte changée, agent refusé…).
+                # Ce n'est pas une panne de réseau : on n'insiste pas, on prévient.
+                m["resume"] = {"state": "detecte" if k == 1 else f"passage{k - 1}"}
+                self.set_state(name, "echec_lanceur", f"passage {k} : run.py a rendu {code} sans résultat")
+                self.save()
+                self.tell(f"Erreur du lanceur : {name}",
+                          f"Passage {k} : run.py a rendu le code {code} sans écrire de résultat. Voir le journal, "
+                          f"corriger, puis : python3 bench/routine.py run-now {name}")
+                return
             if failed:
                 external[tasks_dir] = failed
         m["passes"].append({"k": k, "attempt": attempt, "started": iso(now), "finished": iso(self.clock()),
@@ -341,7 +349,8 @@ class Routine:
             self.save()
             return
         self.set_state(name, "echec_exterieur", f"passage {k} : {attempt} essais en échec extérieur")
-        m["resume"] = {"state": "detecte" if k == 1 else f"passage{k - 1}"}
+        m["resume"] = {"state": "detecte" if k == 1 else f"passage{k - 1}",
+                       "retry": {"attempt": 0, "targets": external, "after": iso(self.clock())}}
         self.save()
         self.tell(f"Échec répété : {name}",
                   f"Passage {k} abandonné après {attempt} essais (connexion, quota ?). "
@@ -409,6 +418,13 @@ class Routine:
             if name in self.state["models"] and self.state["models"][name].get("state") not in ("annule",):
                 print(f"{name} est déjà suivi ({self.state['models'][name]['state']})")
                 return 1
+            manual = [f.name for f in sorted((self.results / name).glob("*.json"))
+                      if f.name != "meta.json" and any(r.get("passage") is None
+                                                       for r in json.loads(f.read_text(encoding="utf-8")).get("runs", []))]
+            if manual:
+                print(f"{name} a déjà des passages lancés à la main ({', '.join(manual)}) : la routine les mélangerait "
+                      f"aux siens. Déplacer results/{name}/ ou lancer les passages avec run.py --append-run --passage k.")
+                return 1
             self.register(item, forced=True)
             return 0
         finally:
@@ -424,8 +440,11 @@ class Routine:
             m = self.state["models"].get(name)
             if not m:
                 raise SystemExit(f"{name} n'est pas suivi (routine.py add <id radar>)")
-            if m["state"] == "echec_exterieur" and m.get("resume"):
-                self.set_state(name, m.pop("resume")["state"], "reprise à la main")
+            if m["state"] in ("echec_exterieur", "echec_lanceur") and m.get("resume", m["state"] == "echec_lanceur"):
+                resume = m.pop("resume", None) or {"state": m.get("before_error", "detecte")}
+                if resume.get("retry"):
+                    m["retry"] = resume["retry"]  # seules les tâches en échec extérieur sont relancées
+                self.set_state(name, resume["state"], "reprise à la main")
             elif m["state"] in TERMINAL:
                 print(f"{name} est terminé ({m['state']})")
                 return 1

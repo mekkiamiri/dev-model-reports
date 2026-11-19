@@ -58,7 +58,15 @@ SUSPICIOUS = [
     (re.compile(r"System\s*\.\s*in\b"), "lecture de l'entrée standard"),
     (re.compile(r"System\s*\.\s*set(Out|Err|In)\b|addShutdownHook"), "détournement de la sortie ou de l'arrêt"),
     (re.compile(r"\bAttaques\b|\bAttackTests\b|\b" + REF_PACKAGE + r"\b"), "référence aux attaques cachées"),
+    # Réflexion et chargement dynamique : rien dans les tâches n'en a besoin, et c'est la porte pour
+    # détourner la sortie du harnais (System.setOut appelé par getMethod) ou appeler la référence.
+    (re.compile(r"java\s*\.\s*lang\s*\.\s*(reflect|invoke)|\bgetMethods?\s*\(|\bgetDeclared\w*\s*\(|\.\s*invoke\s*\("
+                r"|\bMethodHandles?\b|\bVarHandle\b|\bforName\s*\(|\bClassLoader\b|\bUnsafe\b|\bsun\s*\.\s*misc"
+                r"|\bjdk\s*\.\s*internal"), "réflexion ou chargement dynamique de classes"),
+    (re.compile(r"\bhalt\s*\(|System\s*\.\s*exit\s*\(|Runtime\s*\.\s*getRuntime|\bFileDescriptor\b"
+                r"|System\s*\.\s*console|\bProcessBuilder\b|\bnative\b"), "arrêt de la JVM, canal de sortie brut ou processus"),
 ]
+UNICODE_ESCAPE = re.compile(r"\\u+([0-9a-fA-F]{4})")
 # Variables transmises à l'agent par défaut ; le reste est retiré (dont PWD et OLDPWD).
 ENV_BASE = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR", "JAVA_HOME",
             # réseau de la machine (proxy, autorité de certification) : sans eux, aucun outil ne joint son API
@@ -88,6 +96,12 @@ def run_cmd(cmd: list[str], cwd: Path, timeout: float, env: dict | None = None, 
     try:
         out, err = proc.communicate(stdin_text, timeout=timeout)
         timed_out = False
+        # Un processus détaché laissé par l'agent ne doit pas survivre : il pourrait réécrire src/ pendant
+        # la notation ou lire les tests cachés. On tue tout le groupe, même après une fin normale.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -151,6 +165,8 @@ def suspicious(src: Path) -> list[str]:
     found = []
     for path in sorted(src.rglob("*.java")) if src.is_dir() else []:
         text = path.read_text(encoding="utf-8", errors="replace")
+        # javac décode les échappements \uXXXX partout dans le source : on décode avant de chercher.
+        text = UNICODE_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), text)
         for pattern, why in SUSPICIOUS:
             if pattern.search(text):
                 found.append(f"{path.relative_to(src).as_posix()} : {why}")
@@ -246,14 +262,22 @@ def declared_attack_ids(task: dict) -> list[str]:
     return ids
 
 
-def _copy_reference(task: dict, dest: Path) -> None:
-    """Référence copiée sous un autre paquet (com.example.x -> dmrref.x) : le fuzzing la compare au code de l'agent."""
+def _copy_reference(task: dict, dest: Path, package: str = REF_PACKAGE) -> None:
+    """Référence copiée sous un autre paquet (com.example.x -> <paquet>.x) : le fuzzing la compare au code de l'agent.
+    À la notation, le paquet est tiré au hasard : le code de l'agent ne peut pas la nommer pour lui déléguer."""
     base = task["dir"] / "reference" / "src"
     for path in _files(base):
         if path.suffix == ".java":
-            target = dest / REF_PACKAGE / path.relative_to(base)
+            target = dest / package / path.relative_to(base)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(re.sub(r"\bcom\.example\.", REF_PACKAGE + ".", path.read_text(encoding="utf-8")), encoding="utf-8")
+            target.write_text(re.sub(r"\bcom\.example\.", package + ".", path.read_text(encoding="utf-8")), encoding="utf-8")
+
+
+def _rename_reference(folder: Path, package: str) -> None:
+    """Dans les attaques copiées, remplace le paquet de la référence (dmrref) par le paquet tiré au hasard."""
+    for path in folder.rglob("*.java"):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(re.sub(r"\b" + REF_PACKAGE + r"\.", package + ".", text), encoding="utf-8")
 
 
 def _run_attack(java: str, out: Path, cwd: Path, attack_id: str, delay_s: float) -> str | None:
@@ -293,10 +317,12 @@ def grade_attacks(task: dict, workdir: Path) -> dict | None:
             grading = Path(tmp)
             if (workdir / "src").is_dir():
                 shutil.copytree(workdir / "src", grading / "src")
+            package = "r" + secrets.token_hex(8)
             shutil.copytree(task["dir"] / "hidden-attacks", grading / "hidden-attacks")
+            _rename_reference(grading / "hidden-attacks", package)
             shutil.copy(CHECK_JAVA, grading / "hidden-attacks" / "Check.java")
             shutil.copy(ATTACKS_JAVA, grading / "hidden-attacks" / "Attaques.java")
-            _copy_reference(task, grading / "ref-src")
+            _copy_reference(task, grading / "ref-src", package)
             sources = sorted(str(p) for p in grading.rglob("*.java"))
             comp = run_cmd([javac, "--release", "17", "-encoding", "UTF-8", "-nowarn", "-d", str(grading / "out"), *sources],
                            grading, task.get("timeout_tests_s", 60))
@@ -606,7 +632,9 @@ def refused(name: str, agent: dict, watch: Path) -> str | None:
         sys.path.insert(0, str(BENCH))
     from radar import excluded_command
     rules = json.loads(watch.read_text(encoding="utf-8")) if watch.exists() else {}
-    return excluded_command(name, [str(c) for c in agent.get("cmd", [])], rules)
+    env_values = [str(v) for v in (agent.get("env") or {}).values()]
+    env_values += [os.environ.get(k, "") for k in agent.get("env_passthrough", [])]
+    return excluded_command(name, [str(c) for c in agent.get("cmd", [])] + env_values, rules)
 
 
 def check_attacks(task: dict, ref_dir: Path) -> tuple[bool, list[str]]:

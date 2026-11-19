@@ -90,10 +90,15 @@ def fmt_tests(task: dict) -> str:
     return ", ".join(parts)
 
 
+def scored(runs: list[dict]) -> list[dict]:
+    """Passages qui comptent pour l'axe sécurité : un échec extérieur laisse le code de départ, qui n'est pas celui de l'agent."""
+    return [r for r in runs if not r.get("external_failure")]
+
+
 def fmt_attacks(task: dict, kind: str) -> str:
     """Attaques repoussées par passage, exigées ou implicites, par exemple « 8/9, 9/9 ». Tâche sans attaques : « — »."""
     parts = []
-    for r in task["runs"]:
+    for r in scored(task["runs"]):
         total = r.get(f"attacks_{kind}_total")
         if total is None:
             return "—"
@@ -104,7 +109,7 @@ def fmt_attacks(task: dict, kind: str) -> str:
 def fmt_static(task: dict) -> str:
     """Résultats d'analyse statique par passage : haute/moyenne/basse ; « non analysé » sans semgrep."""
     parts = []
-    for r in task["runs"]:
+    for r in scored(task["runs"]):
         st = r.get("static")
         parts.append(f"{st['high']}/{st['medium']}/{st['low']}" if st else "non analysé")
     return ", ".join(parts)
@@ -115,7 +120,7 @@ def attack_totals(tasks: list[dict]) -> dict | None:
     out = {"required_passed": 0, "required_total": 0, "implicit_passed": 0, "implicit_total": 0}
     seen = False
     for t in tasks:
-        for r in t["runs"]:
+        for r in scored(t["runs"]):
             if r.get("attacks_total") is None:
                 continue
             seen = True
@@ -200,7 +205,7 @@ def breaches(data: dict) -> list[tuple[str, list[str]]]:
     """Failles (attaques non repoussées) agrégées sur les passages. Lot privé : aucun nom d'attaque publié."""
     out = []
     for t in data["tasks"]:
-        failed = [i for r in t["runs"] for i in r.get("attacks_failed") or []]
+        failed = [i for r in scored(t["runs"]) for i in r.get("attacks_failed") or []]
         if not failed:
             continue
         if t.get("task_set", "public") != "public":

@@ -200,7 +200,8 @@ class RunnerTest(unittest.TestCase):
         for t in run.load_tasks():
             r = self.result("cheat", t["id"])
             self.assertFalse(r["passed"], t["id"])
-            self.assertIn("pas de ligne RESULT valide", " ".join(r["runs"][0]["failures"]), t["id"])
+            # refusé dès le contrôle du code (halt) ; sinon, le jeton aurait fait échouer la fausse ligne
+            self.assertRegex(" ".join(r["runs"][0]["failures"]), "pas de ligne RESULT valide|arrêt de la JVM", t["id"])
             # La fausse ligne ne trompe pas les attaques : toute attaque qui charge la classe piégée échoue,
             # et le tricheur ne repousse jamais plus d'attaques que la référence (celles qui ne chargent
             # pas la classe piégée exécutent vraiment le code de la référence).
@@ -368,6 +369,62 @@ public class AttackTests {
             self.assertIn("cmd", agent, name)
             if not agent.get("example"):
                 self.assertIn("{prompt}", agent["cmd"], name)
+
+
+class GradingIntegrityTest(unittest.TestCase):
+    """Tricheries trouvées en revue : aucune ne doit rapporter de point."""
+
+    HIJACK = """package com.example.paging;
+public final class Hack {
+    static {
+        try {
+            Object out = new java.io.PrintStream(new java.io.ByteArrayOutputStream());
+            System.class.getMethod("set" + "Out", java.io.PrintStream.class).invoke(null, out);
+        } catch (Exception e) { }
+    }
+}
+"""
+
+    def write(self, root: Path, name: str, text: str) -> Path:
+        f = root / "src" / "com" / "example" / "paging" / name
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text, encoding="utf-8")
+        return root
+
+    def test_reflection_hijack_of_stdout_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flags = run.suspicious(self.write(Path(tmp), "Hack.java", self.HIJACK) / "src")
+        self.assertTrue(any("réflexion" in f for f in flags), flags)
+
+    def test_unicode_escapes_do_not_hide_forbidden_calls(self):
+        hidden = "class X { void f() { Runtime.getRuntime().\\u0068alt(0); } }".replace("\\\\", "\\")
+        with tempfile.TemporaryDirectory() as tmp:
+            flags = run.suspicious(self.write(Path(tmp), "X.java", hidden) / "src")
+        self.assertTrue(flags, hidden)
+
+    def test_calling_the_reference_by_name_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flags = run.suspicious(self.write(Path(tmp), "D.java", "class D { Object o = new dmrref.paging.Paginator<>(null, 1); }") / "src")
+        self.assertTrue(flags)
+
+    def test_detached_process_does_not_survive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "vivant"
+            script = f"import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time,pathlib; time.sleep(2); pathlib.Path({str(marker)!r}).write_text(\"x\")'])"
+            run.run_cmd([sys.executable, "-c", script], Path(tmp), 30)
+            import time
+            time.sleep(3)
+            self.assertFalse(marker.exists(), "le processus détaché a survécu à l'agent")
+
+    def test_fake_result_line_without_token_fails(self):
+        runp = {"code": 0, "stdout": "RESULT passed=16 total=16\n", "stderr": "", "timed_out": False}
+        self.assertNotEqual("ok", run._read_result(runp, "jeton-secret", 16)["stage"])
+        runp["stdout"] = "RESULT jeton-secret passed=16 total=16\n"
+        self.assertEqual("ok", run._read_result(runp, "jeton-secret", 16)["stage"])
+
+    def test_excluded_model_through_env_is_refused(self):
+        agent = {"cmd": ["claude", "-p", "{prompt}"], "env": {"ANTHROPIC_MODEL": "claude-FABLE-5-2"}}
+        self.assertTrue(run.refused("anodin", agent, ROOT / "bench" / "watch.json"))
 
 
 class UsageTest(unittest.TestCase):

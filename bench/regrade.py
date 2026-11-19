@@ -33,8 +33,8 @@ def regrade(model_dir: Path, task: dict, static: bool) -> dict | None:
     now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     for r in record["runs"]:
         artifacts = model_dir / "artifacts" / task["id"] / f"run-{r['run']}"
-        if not artifacts.is_dir():
-            continue
+        if not artifacts.is_dir() or r.get("external_failure"):
+            continue  # échec extérieur : l'agent n'a pas travaillé, rien à attaquer
         r.update(run.grade_attacks(task, artifacts) or {})
         if static:
             import security
