@@ -50,6 +50,26 @@ window.BENCH = {
    "contract": "",
    "hidden_tests": 18,
    "mutants": 5
+  },
+  {
+   "id": "secu-fichiers",
+   "kind": "securite",
+   "title": "Stocker des pièces jointes sous un dossier racine",
+   "summary": "Enregistrer, lire et supprimer des fichiers par un nom venu de l'extérieur, sans jamais sortir de la racine.",
+   "brief": "",
+   "contract": "# Contrat : stockage de pièces jointes\n\nPaquet : `com.example.files`. Ces signatures publiques sont obligatoires ; le reste est libre.\n\n```java\npublic final class AttachmentStore {\n    public AttachmentStore(Path root);              // IllegalArgumentException si root est null, absent ou pas un dossier\n    public void save(String name, byte[] content);  // crée la pièce ou remplace son contenu\n    public byte[] read(String name);                // java.util.NoSuchElementException si la pièce n'existe pas\n    public boolean delete(String name);             // true si la pièce existait (et a été supprimée), false sinon\n}\n\npublic class InvalidNameException extends IllegalArgumentException {\n    public InvalidNameException(String message);\n}\n\npublic class StorageException extends RuntimeException {\n    public StorageException(String message, Throwable cause);\n}\n```\n\n## Où sont les pièces\n\n- Une pièce nommée `n` est **toujours** le fichier `racine/n`, directement sous la racine : jamais dans un sous-dossier, jamais hors de la racine.\n- La racine est fixée à la construction (son chemin réel, liens résolus).\n\n## Noms valides (exigences de sécurité)\n\n1. Un nom valide a de 1 à 255 caractères, tous parmi `A-Z`, `a-z`, `0-9`, `.`, `_` et `-` (ASCII seulement).\n2. Il ne commence pas par `.` (donc ni `.`, ni `..`, ni fichier caché).\n3. Ce n'est pas un nom réservé de Windows, sans tenir compte de la casse, seul ou suivi d'une extension : `CON`, `PRN`, `AUX`, `NUL`, `COM1` à `COM9`, `LPT1` à `LPT9` (par exemple `con`, `NUL.txt`, `Com1.tar.gz`).\n4. Tout autre nom (`null`, vide, avec `/` ou `\\`, chemin absolu, `..`, séquence encodée comme `%2e%2e%2f`, caractère de contrôle, caractère non ASCII…) lève `InvalidNameException` **avant tout accès au disque**.\n\n## Liens symboliques (exigence de sécurité)\n\n5. Si `racine/n` est un lien symbolique (créé par quelqu'un d'autre), `save`, `read` et `delete` lèvent `StorageException` **sans suivre le lien** : la cible n'est ni lue, ni modifiée, ni supprimée.\n\n## Erreurs\n\n6. Toute autre erreur d'entrée-sortie lève `StorageException` (avec la cause).\n7. `read` d'une pièce absente lève `NoSuchElementException` ; `delete` d'une pièce absente rend `false`.\n8. Les messages d'erreur ne recopient pas le nom reçu tel quel (il peut contenir n'importe quoi).\n",
+   "hidden_tests": 21,
+   "mutants": 2
+  },
+  {
+   "id": "secu-jeton",
+   "kind": "securite",
+   "title": "Signer et vérifier un jeton HMAC",
+   "summary": "Jeton HMAC-SHA256 au format imposé, avec expiration : refuser tout jeton forgé, tronqué ou expiré.",
+   "brief": "",
+   "contract": "# Contrat : jetons signés HMAC-SHA256\n\nPaquet : `com.example.token`. Ces signatures publiques sont obligatoires ; le reste est libre.\n\n```java\npublic final class TokenService {\n    public TokenService(byte[] key, Clock clock);      // IllegalArgumentException si key ou clock est null, ou si key fait moins de 32 octets\n    public String sign(String subject, Duration ttl);  // IllegalArgumentException si subject ou ttl est invalide\n    public String verify(String token);                // rend le sujet ; InvalidTokenException si le jeton n'est pas valide\n}\n\npublic class InvalidTokenException extends RuntimeException {\n    public InvalidTokenException(String message);\n}\n```\n\nHMAC avec `javax.crypto.Mac` (`HmacSHA256`), bibliothèque standard uniquement.\n\n## Format du jeton\n\n`HS256.<sujet>.<exp>.<signature>`, soit quatre parties séparées par `.` :\n\n- `HS256` : l'algorithme, exactement ce texte ;\n- `<sujet>` : de 1 à 64 caractères parmi `A-Z`, `a-z`, `0-9`, `_` et `-` ;\n- `<exp>` : l'instant d'expiration, en secondes depuis l'époque Unix, écrit en chiffres décimaux ASCII, sans signe ni zéro en tête, 18 chiffres au plus ;\n- `<signature>` : le HMAC-SHA256, avec la clé, des octets ASCII de `HS256.<sujet>.<exp>`, encodé en Base64 URL **sans** `=` final (`Base64.getUrlEncoder().withoutPadding()`, 43 caractères).\n\n## sign\n\n- `subject` doit respecter le format du sujet, sinon `IllegalArgumentException`.\n- `ttl` est tronqué à la seconde et doit valoir au moins une seconde, sinon `IllegalArgumentException`.\n- `exp` = secondes de `clock.instant()` + secondes de `ttl`.\n\n## verify (exigences de sécurité)\n\nRend le sujet si, et seulement si, toutes ces conditions sont vraies ; sinon lève `InvalidTokenException`, jamais une autre exception :\n\n1. le jeton a exactement quatre parties et l'algorithme vaut exactement `HS256` (tout autre texte, dont `none`, `hs256` ou `HS512`, est refusé, signature ou pas) ;\n2. le sujet et `exp` respectent le format ci-dessus ;\n3. la signature fait exactement 43 caractères Base64 URL (une signature vide, tronquée, rallongée ou avec `=` est refusée) et correspond au HMAC recalculé ;\n4. la comparaison des signatures se fait en temps constant avec `java.security.MessageDigest.isEqual` (pas de `equals`, de `Arrays.equals` ni de boucle qui s'arrête au premier écart) ;\n5. le jeton n'est pas expiré : il est refusé dès que les secondes de `clock.instant()` sont supérieures ou égales à `exp`.\n\n## Clé\n\n6. La clé fait au moins 32 octets (256 bits) ; une clé plus courte est refusée à la construction.\n",
+   "hidden_tests": 16,
+   "mutants": 2
   }
  ],
  "grille": {
@@ -128,7 +148,14 @@ window.BENCH = {
    }
   ]
  },
- "reports": [],
+ "reports": [
+  {
+   "model": "claude-opus-5-5",
+   "label": "Claude Opus 5.5 via Claude Code (claude -p)",
+   "date": "2026-11-19",
+   "href": "rapports/claude-opus-5-5-2026-11-19.html"
+  }
+ ],
  "examples": [
   {
    "model": "fake-reference",

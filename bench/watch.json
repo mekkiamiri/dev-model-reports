@@ -1,0 +1,51 @@
+{
+  "_doc": "Routine 48 h (bench/routine.py) : éditeurs suivis dans ai-radar, exclusions, budget, calendrier. Tout modèle contenant « fable » est exclu quoi qu'il arrive (règle codée dans bench/radar.py).",
+  "detect_window_h": 48,
+  "cancel_window_h": 1,
+  "deadline_h": 48,
+  "finish_by_h": 44,
+  "pass_offsets_h": [0, 12, 24],
+  "max_external_retries": 2,
+  "budget": {"usd_per_model": 15, "passages_without_cost": 6},
+  "exclude": {
+    "contains": ["fable"],
+    "suffixes": ["-pro"],
+    "patterns": []
+  },
+  "publishers": {
+    "anthropic": {"template": "claude", "model_arg": "{slug_dashed}"},
+    "openai": {"template": "codex", "model_arg": "{slug}"},
+    "google": {"template": "gemini", "model_arg": "{slug}"}
+  },
+  "templates": {
+    "claude": {
+      "tool": "claude",
+      "version_cmd": ["claude", "--version"],
+      "env_passthrough": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_VERTEX",
+                          "CLOUD_ML_REGION", "ANTHROPIC_VERTEX_PROJECT_ID"],
+      "cmd": ["claude", "-p", "{prompt}", "--model", "{model_arg}", "--output-format", "json",
+              "--safe-mode", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+              "--restricted", "--tools", "Read,Edit,Write,Glob,Grep,Bash", "--permission-mode", "acceptEdits",
+              "--allowedTools", "Bash(javac -d out *)", "Bash(java -cp out *)"],
+      "usage": "claude-json"
+    },
+    "codex": {
+      "tool": "codex",
+      "version_cmd": ["codex", "--version"],
+      "env_passthrough": ["CODEX_API_KEY", "CODEX_HOME", "OPENAI_API_KEY"],
+      "cmd": ["codex", "exec", "{prompt}", "--model", "{model_arg}", "--json", "--sandbox", "workspace-write",
+              "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check", "--color", "never"],
+      "usage": "codex-jsonl"
+    },
+    "gemini": {
+      "tool": "gemini",
+      "version_cmd": ["gemini", "--version"],
+      "env_passthrough": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION",
+                          "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_APPLICATION_CREDENTIALS"],
+      "cmd": ["gemini", "-p", "{prompt}", "--model", "{model_arg}", "--output-format", "json",
+              "--approval-mode", "yolo", "--sandbox", "--extensions", "none", "--allowed-mcp-server-names", "none",
+              "--skip-trust"],
+      "usage": "gemini-json"
+    }
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "schema": 2,
+  "model": "claude-opus-5-5",
+  "label": "Claude Opus 5.5 via Claude Code (claude -p)",
+  "example": false,
+  "task": "secu-fichiers",
+  "task_set": "public",
+  "kind": "securite",
+  "title": "Stocker des pièces jointes sous un dossier racine",
+  "task_fingerprint": "cde2b097b629",
+  "hidden_tests": 21,
+  "attacks_fingerprint": "18d6a91985a8",
+  "attacks": [
+    {
+      "id": "traversee",
+      "famille": "traversee",
+      "exigee": true
+    },
+    {
+      "id": "chemin-absolu",
+      "famille": "chemin-absolu",
+      "exigee": true
+    },
+    {
+      "id": "encodage",
+      "famille": "encodage",
+      "exigee": true
+    },
+    {
+      "id": "lien-symbolique",
+      "famille": "lien-symbolique",
+      "exigee": true
+    },
+    {
+      "id": "lien-vers-dossier",
+      "famille": "lien-symbolique",
+      "exigee": true
+    },
+    {
+      "id": "nom-reserve",
+      "famille": "nom-reserve",
+      "exigee": true
+    },
+    {
+      "id": "nom-long",
+      "famille": "nom-reserve",
+      "exigee": true
+    },
+    {
+      "id": "dossier",
+      "famille": "dossier",
+      "exigee": false
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ],
+  "bench_commit": "cfp-devoxxfr-2027-16-g87d941f",
+  "tool_version": "2.1.328 (Claude Code)",
+  "date": "2026-11-19T14:52:32+00:00",
+  "repeat": 3,
+  "passed_runs": 3,
+  "passed": true,
+  "external_failures": 0,
+  "mean_agent_duration_s": 108.78,
+  "total_cost_usd": 1.192,
+  "cost_known_runs": 3,
+  "runs": [
+    {
+      "run": 1,
+      "passage": 1,
+      "date": "2026-11-19T14:25:07+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-15-g3abd27d",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 21,
+      "tests_total": 21,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 108.58,
+      "grading_duration_s": 0.61,
+      "tokens": {
+        "input": 20,
+        "output": 11580,
+        "cache_read": 92092,
+        "cache_write": 42204
+      },
+      "cost_usd": 0.46111840000000004,
+      "turns": 13,
+      "attacks_stage": "ok",
+      "attacks_passed": 9,
+      "attacks_total": 9,
+      "attacks_failed": [],
+      "attacks_failures": [],
+      "attacks_required_passed": 8,
+      "attacks_required_total": 8,
+      "attacks_implicit_passed": 1,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.66,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      },
+      "regraded_at": "2026-11-19T14:42:59+00:00"
+    },
+    {
+      "run": 2,
+      "passage": 2,
+      "date": "2026-11-19T14:38:21+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-15-g3abd27d",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 21,
+      "tests_total": 21,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 100.11,
+      "grading_duration_s": 0.46,
+      "tokens": {
+        "input": 24,
+        "output": 10111,
+        "cache_read": 123747,
+        "cache_write": 27859
+      },
+      "cost_usd": 0.36636040000000003,
+      "turns": 17,
+      "attacks_stage": "ok",
+      "attacks_passed": 9,
+      "attacks_total": 9,
+      "attacks_failed": [],
+      "attacks_failures": [],
+      "attacks_required_passed": 8,
+      "attacks_required_total": 8,
+      "attacks_implicit_passed": 1,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.63,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      },
+      "regraded_at": "2026-11-19T14:42:59+00:00"
+    },
+    {
+      "run": 3,
+      "passage": 3,
+      "date": "2026-11-19T14:52:32+00:00",
+      "tool_version": "2.1.328 (Claude Code)",
+      "bench_commit": "cfp-devoxxfr-2027-16-g87d941f",
+      "models_used": [
+        "claude-opus-5-5"
+      ],
+      "passed": true,
+      "stage": "ok",
+      "tests_passed": 21,
+      "tests_total": 21,
+      "failures": [],
+      "compile_errors": null,
+      "agent_exit_code": 0,
+      "agent_timed_out": false,
+      "agent_error": null,
+      "external_failure": false,
+      "agent_duration_s": 117.64,
+      "grading_duration_s": 0.56,
+      "tokens": {
+        "input": 22,
+        "output": 12833,
+        "cache_read": 144699,
+        "cache_write": 15766
+      },
+      "cost_usd": 0.36451780000000006,
+      "turns": 14,
+      "attacks_stage": "ok",
+      "attacks_passed": 9,
+      "attacks_total": 9,
+      "attacks_failed": [],
+      "attacks_failures": [],
+      "attacks_required_passed": 8,
+      "attacks_required_total": 8,
+      "attacks_implicit_passed": 1,
+      "attacks_implicit_total": 1,
+      "attacks_duration_s": 0.68,
+      "static": {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "outils": [
+          "semgrep",
+          "gitleaks"
+        ]
+      }
+    }
+  ]
+}

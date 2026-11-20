@@ -38,6 +38,30 @@ Chaque tâche a :
 6. On enregistre aussi les tests passés à chaque passage, la durée, les tokens, le coût, le nombre de tours et l'erreur éventuelle de l'agent si la commande les fournit (`claude -p --output-format json` : `total_cost_usd`, `usage`, `num_turns`, `is_error`, `subtype` ; `codex exec --json` : tokens des événements `turn.completed`, pas de coût). Le format réel est à revérifier au premier vrai passage.
 7. Le code produit et le résumé final sont gardés (`results/<modèle>/artifacts/`, `results/<modèle>/transcripts/`) pour la grille de ressenti.
 
+## Axe sécurité (tests d'intrusion)
+
+Le code produit est aussi attaqué. Même principe que les tests cachés : une suite cachée, une note sans juge LLM, et la preuve que la suite attrape de vraies failles.
+
+- **Attaques cachées** (`hidden-attacks/`) : chaque attaque tourne dans sa propre JVM (`-Xmx256m`, délai par attaque), avec son propre jeton. Blocage, `OutOfMemoryError`, `StackOverflowError` ou sortie interrompue = faille. Le code est attaqué même si les tests fonctionnels échouent, pourvu qu'il compile.
+- **Exigée ou implicite** : une attaque `exigee` correspond à une règle écrite dans le PRD ou le contrat ; une attaque implicite teste le bon sens de développeur (attente : une exception documentée ou un résultat borné, jamais un blocage ni un crash de la JVM). Le rapport donne les deux scores séparément.
+- **Mutants vulnérables** (`mutants-vuln/<famille>/`) : la référence avec une faille plausible. `--check` exige que la référence résiste, que chaque mutant vulnérable tombe sur une attaque de sa famille, et qu'il passe quand même les tests fonctionnels (sinon c'est un bug, pas une faille).
+- **Référence vulnérable** : trois attaques implicites font tomber la référence elle-même (`reference_vulnerable` dans `task.json`). Elles restent dans le banc, non bloquantes pour `--check`, et la référence n'est pas modifiée (son empreinte publiée ne change pas).
+- **Fuzzing différentiel** : entrées pseudo-aléatoires à graine fixe, comparées à la référence compilée sous un autre paquet. C'est une faille seulement si l'agent **plante** (exception standard de Java non annoncée : `NullPointerException`, dépassement d'index…), bloque ou fait tomber la JVM. Une saisie plus tolérante ou une valeur différente est un écart de conformité (ligne `ECART` sur la sortie d'erreur), pas une faille : les tests fonctionnels s'en chargent. Exception : `refacto-tarifs`, où tout écart avec l'original est un défaut (`memeIssueStricte`).
+- **Rejouer** : `python3 bench/regrade.py --model <m>` rejoue attaques et analyse statique sur le code gardé, sans rappeler le modèle (refusé si l'empreinte de la tâche a changé).
+- **Analyse statique** (`bench/security.py`) : semgrep avec les seules règles locales `bench/semgrep/java.yml` (tirées de Project CodeGuard, `--metrics=off`, sans registre en ligne) et gitleaks, tous deux sur `src/` seulement (le code livré ; les tests de l'agent ont souvent des clés factices). SARIF dans `results/<modèle>/security/`, compte par gravité, sans effet sur la note.
+
+| Tâche | Attaques (* = implicite, † = la référence y est vulnérable) |
+|---|---|
+| `bug-pagination` | taille nulle*, taille négative extrême, taille max, page hors bornes, fuzz |
+| `prd-config` | expansion exponentielle, expansion géante*†, cycle long, chaîne longue sans cycle, clé géante, valeur géante, fuzz |
+| `prd-facture` | montants géants, exposant géant*†, lignes nombreuses, caractères de contrôle, Unicode, message injecté*†, fuzz |
+| `prd-horaires` | règles nombreuses, heures hors bornes, syntaxe mal formée, entrée géante, instant extrême*, fuzz |
+| `refacto-tarifs` | quantité max, prix géant, entrées nulles, fuzz |
+| `secu-fichiers` | traversée `../`, chemin absolu, encodage, lien symbolique, lien vers dossier, nom réservé, nom long, dossier*, fuzz |
+| `secu-jeton` | algorithme « none », signature tronquée, expiration, format d'expiration, sujet injecté, comparaison constante, clé courte, jeton géant, durée géante*, fuzz |
+
+Le test d'intrusion d'une appli qui tourne (ZAP contre un serveur HTTP) n'est pas fait : les tâches sont des bibliothèques.
+
 ## Reproductibilité
 
 - **Sans les réglages de la machine.** Pour Claude Code, la configuration d'exemple utilise des options vérifiées dans `claude --help` (version 2.1.325) : `--safe-mode` (CLAUDE.md, skills, plugins installés, hooks, serveurs MCP, commandes et agents personnalisés désactivés), `--strict-mcp-config` (aucun serveur MCP hors `--mcp-config`), `--disable-slash-commands`, `--no-session-persistence`, et `--restricted` avec `--tools` (outils de fichiers confinés au dossier de travail). Commandes autorisées : `javac -d out …` et `java -cp out …` seulement (ni `find`, ni `java` libre). Pour Codex CLI : `--ignore-user-config`, `--ignore-rules`, `--ephemeral`, `--sandbox workspace-write`.
@@ -77,3 +101,4 @@ Les tâches de `tasks/` sont publiques : leurs tests cachés seront connus, et p
 - **Détection de triche par motifs** : la liste de motifs suspects attrape les tricheries évidentes, pas toutes ; le jeton et le nombre de tests attendu ferment la tricherie la plus simple (fausse ligne RESULT).
 - **Le harnais compte** : un modèle mesuré via Claude Code n'est pas mesuré « nu ». Le rapport dit quel outil a été utilisé.
 - **Un seul notateur** pour le ressenti.
+- **Les attaques ne couvrent que ce qu'on a pensé à attaquer** : une note de sécurité parfaite ne prouve pas l'absence de faille. Les règles semgrep sont peu nombreuses (9) et reconnaissent surtout des noms parlants.

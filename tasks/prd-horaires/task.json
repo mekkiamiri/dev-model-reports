@@ -5,5 +5,38 @@
   "summary": "Analyser une règle d'horaires, dire si c'est ouvert et quand ça rouvre, avec plages de nuit et jours d'exception.",
   "timeout_agent_s": 1800,
   "timeout_tests_s": 60,
-  "hidden_tests": 41
+  "hidden_tests": 41,
+  "timeout_attack_s": 8,
+  "attacks": [
+    {
+      "id": "regles-nombreuses",
+      "famille": "volume",
+      "exigee": true
+    },
+    {
+      "id": "heures-hors-bornes",
+      "famille": "heures",
+      "exigee": true
+    },
+    {
+      "id": "syntaxe-mal-formee",
+      "famille": "syntaxe",
+      "exigee": true
+    },
+    {
+      "id": "entree-geante",
+      "famille": "syntaxe",
+      "exigee": true
+    },
+    {
+      "id": "instant-extreme",
+      "famille": "bornes",
+      "exigee": false
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ]
 }

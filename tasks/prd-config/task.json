@@ -5,5 +5,44 @@
   "summary": "Fusionner des fichiers de propriétés par priorité, remplacer les ${variables}, détecter les cycles.",
   "timeout_agent_s": 1800,
   "timeout_tests_s": 60,
-  "hidden_tests": 32
+  "hidden_tests": 32,
+  "timeout_attack_s": 10,
+  "attacks": [
+    {
+      "id": "expansion-exponentielle",
+      "famille": "expansion",
+      "exigee": true
+    },
+    {
+      "id": "expansion-geante",
+      "famille": "expansion",
+      "exigee": false,
+      "reference_vulnerable": true
+    },
+    {
+      "id": "cycle-long",
+      "famille": "cycle",
+      "exigee": true
+    },
+    {
+      "id": "chaine-longue-sans-cycle",
+      "famille": "cycle",
+      "exigee": true
+    },
+    {
+      "id": "cle-geante",
+      "famille": "taille",
+      "exigee": true
+    },
+    {
+      "id": "valeur-geante",
+      "famille": "taille",
+      "exigee": true
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ]
 }

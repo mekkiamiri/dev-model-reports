@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 GRILLE = ROOT / "bench" / "grille.json"
-KIND_LABEL = {"prd": "PRD vers code", "bug": "bug à corriger", "refactoring": "refactoring"}
+KIND_LABEL = {"prd": "PRD vers code", "bug": "bug à corriger", "refactoring": "refactoring", "securite": "sécurité"}
 EXAMPLE_BANNER = "EXEMPLE, pas un vrai modèle : rapport généré avec un faux agent, sans appel à un modèle. Il montre le format, pas une mesure."
 
 
@@ -83,8 +83,50 @@ def fmt_tests(task: dict) -> str:
     """Tests passés à chaque passage, par exemple « 25/25, 24/25, 25/25 »."""
     parts = []
     for r in task["runs"]:
-        parts.append(f"{r['tests_passed']}/{r['tests_total']}" if r["tests_total"] else r["stage"])
+        cell = f"{r['tests_passed']}/{r['tests_total']}" if r["tests_total"] else r["stage"]
+        if r.get("external_failure"):
+            cell += " (échec extérieur : l'outil n'a pas travaillé)"
+        parts.append(cell)
     return ", ".join(parts)
+
+
+def scored(runs: list[dict]) -> list[dict]:
+    """Passages qui comptent pour l'axe sécurité : un échec extérieur laisse le code de départ, qui n'est pas celui de l'agent."""
+    return [r for r in runs if not r.get("external_failure")]
+
+
+def fmt_attacks(task: dict, kind: str) -> str:
+    """Attaques repoussées par passage, exigées ou implicites, par exemple « 8/9, 9/9 ». Tâche sans attaques : « — »."""
+    parts = []
+    for r in scored(task["runs"]):
+        total = r.get(f"attacks_{kind}_total")
+        if total is None:
+            return "—"
+        parts.append(f"{r[f'attacks_{kind}_passed']}/{total}" if total else "aucune")
+    return ", ".join(parts) or "—"
+
+
+def fmt_static(task: dict) -> str:
+    """Résultats d'analyse statique par passage : haute/moyenne/basse ; « non analysé » sans semgrep."""
+    parts = []
+    for r in scored(task["runs"]):
+        st = r.get("static")
+        parts.append(f"{st['high']}/{st['medium']}/{st['low']}" if st else "non analysé")
+    return ", ".join(parts)
+
+
+def attack_totals(tasks: list[dict]) -> dict | None:
+    """Somme sur toutes les tâches et tous les passages ; None si aucune tâche n'a d'attaques."""
+    out = {"required_passed": 0, "required_total": 0, "implicit_passed": 0, "implicit_total": 0}
+    seen = False
+    for t in tasks:
+        for r in scored(t["runs"]):
+            if r.get("attacks_total") is None:
+                continue
+            seen = True
+            for k in out:
+                out[k] += r.get("attacks_" + k, 0)
+    return out if seen else None
 
 
 def summary(data: dict) -> dict:
@@ -103,6 +145,7 @@ def summary(data: dict) -> dict:
         "tools": sorted({t.get("tool_version") or "non relevée" for t in tasks}),
         "sets": sorted({t.get("task_set", "public") for t in tasks}),
         "repeat": sorted({t["repeat"] for t in tasks}),
+        "attacks": attack_totals(tasks),
     }
 
 
@@ -113,6 +156,9 @@ def task_rows(data: dict) -> list[list[str]]:
             f"{t['title']} ({KIND_LABEL.get(t['kind'], t['kind'])})",
             ("réussie" if t["passed"] else "échouée") + f" · {t['passed_runs']}/{t['repeat']}",
             fmt_tests(t),
+            fmt_attacks(t, "required"),
+            fmt_attacks(t, "implicit"),
+            fmt_static(t),
             f"{t['mean_agent_duration_s']} s",
             fmt_tokens(t),
             fmt_cost(t.get("total_cost_usd"), t.get("cost_known_runs"), t["repeat"]),
@@ -121,7 +167,8 @@ def task_rows(data: dict) -> list[list[str]]:
     return rows
 
 
-TASK_HEADER = ["Tâche", "Réussite (k/N)", "Tests cachés par passage", "Durée moy.", "Tokens moy.", "Coût", "Empreinte"]
+TASK_HEADER = ["Tâche", "Fonctionnel (k/N)", "Tests cachés par passage", "Attaques exigées", "Attaques implicites",
+               "Statique (haute/moy./basse)", "Durée moy.", "Tokens moy.", "Coût", "Empreinte"]
 
 
 def ressenti_rows(data: dict) -> list[list[str]]:
@@ -154,6 +201,26 @@ def failures(data: dict) -> list[tuple[str, list[str]]]:
     return out
 
 
+def breaches(data: dict) -> list[tuple[str, list[str]]]:
+    """Failles (attaques non repoussées) agrégées sur les passages. Lot privé : aucun nom d'attaque publié."""
+    out = []
+    for t in data["tasks"]:
+        failed = [i for r in scored(t["runs"]) for i in r.get("attacks_failed") or []]
+        if not failed:
+            continue
+        if t.get("task_set", "public") != "public":
+            out.append((t["title"], [f"{len(failed)} faille(s), détail non publié (lot privé « {t['task_set']} »)"]))
+            continue
+        kinds = {a["id"]: ("exigée" if a.get("exigee") else "implicite") + (", la référence y tombe aussi" if a.get("reference_vulnerable") else "")
+                 for a in t.get("attacks") or []}
+        n = len(t["runs"])
+        counts: dict[str, int] = {}
+        for i in failed:
+            counts[i] = counts.get(i, 0) + 1
+        out.append((t["title"], [f"{i} ({kinds.get(i, '?')})" + (f" ({c}/{n} passages)" if n > 1 else "") for i, c in counts.items()]))
+    return out
+
+
 def header_lines(meta: dict, s: dict) -> list[str]:
     cost = fmt_cost(s["cost"]) + ("" if s["cost_complete"] or s["cost"] is None else " (coût manquant sur certains passages)")
     return [
@@ -162,7 +229,70 @@ def header_lines(meta: dict, s: dict) -> list[str]:
         f"Durée totale de l'agent (moyenne par tâche) : {s['duration']} s · coût : {cost}",
         f"Passages par tâche : {', '.join(map(str, s['repeat']))} · lot de tâches : {', '.join(s['sets'])}",
         f"Version du banc : {', '.join(s['commits'])} · outil : {', '.join(s['tools'])}",
-    ]
+    ] + ([f"Attaques repoussées (tous passages) : exigées {a['required_passed']}/{a['required_total']}"
+          f" · implicites {a['implicit_passed']}/{a['implicit_total']}"] if (a := s["attacks"]) else [])
+
+
+# ---------------------------------------------------------------- calendrier des passages (routine 48 h)
+
+RESSENTI_BANNER = "Ressenti à noter : la grille (RESSENTI.md) n'est pas encore remplie pour ce modèle."
+
+
+def _time(value):
+    if not value:
+        return None
+    try:
+        t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def calendar(data: dict) -> dict:
+    """Passages datés (H + x h, H = sortie du modèle), hors délai, modèles réellement utilisés."""
+    h = _time(data["meta"].get("release_date"))
+    starts: dict[int, dt.datetime] = {}
+    used: set[str] = set()
+    for t in data["tasks"]:
+        for r in t["runs"]:
+            used.update(r.get("models_used") or [])
+            when = _time(r.get("date"))
+            if when:
+                k = r.get("passage") or r["run"]
+                starts[k] = min(starts.get(k, when), when)
+    rows = [[f"Passage {k}", when.strftime("%Y-%m-%d %H:%M UTC"),
+             f"H + {(when - h).total_seconds() / 3600:.0f} h" if h else "date de sortie inconnue"]
+            for k, when in sorted(starts.items())]
+    late = bool(data["meta"].get("hors_delai")) or bool(h and starts and max(starts.values()) > h + dt.timedelta(hours=48))
+    return {"rows": rows, "late": late, "models_used": sorted(used),
+            "ressenti_missing": data["ressenti"] is None and not data["meta"].get("example")}
+
+
+CALENDAR_HEADER = ["Passage", "Début", "Depuis la sortie"]
+LATE_NOTE = "Hors délai : au moins un passage a eu lieu plus de 48 h après la sortie du modèle."
+
+
+def calendar_markdown(data: dict) -> str:
+    c = calendar(data)
+    if not c["rows"]:
+        return ""
+    parts = ["## Calendrier des passages\n"]
+    if c["late"]:
+        parts.append(f"**{LATE_NOTE}**\n")
+    parts.append(md_table(CALENDAR_HEADER, c["rows"]) + "\n")
+    if c["models_used"]:
+        parts.append("Modèles réellement utilisés (déclarés par l'outil) : " + ", ".join(f"`{m}`" for m in c["models_used"]) + "\n")
+    return "\n".join(parts)
+
+
+def calendar_html(data: dict) -> str:
+    c, e = calendar(data), html.escape
+    if not c["rows"]:
+        return ""
+    late = f"<p><b>{e(LATE_NOTE)}</b></p>" if c["late"] else ""
+    used = (f"<p class='muted'>Modèles réellement utilisés (déclarés par l'outil) : {e(', '.join(c['models_used']))}</p>"
+            if c["models_used"] else "")
+    return f"<h2>Calendrier des passages</h2>{late}{html_table(CALENDAR_HEADER, c['rows'])}{used}"
 
 
 # ---------------------------------------------------------------- Markdown
@@ -179,14 +309,24 @@ def to_markdown(data: dict, date: str) -> str:
     parts = []
     if meta.get("example"):
         parts.append(f"> **{EXAMPLE_BANNER}**\n")
+    if calendar(data)["ressenti_missing"]:
+        parts.append(f"> **{RESSENTI_BANNER}**\n")
     parts.append(f"# {meta['label']} : rapport du {date}\n")
     parts.append("\n".join("- " + l for l in header_lines(meta, s)) + "\n")
     parts.append("## Résultats par tâche\n")
     parts.append(md_table(TASK_HEADER, task_rows(data)) + "\n")
+    if calendar_markdown(data):
+        parts.append(calendar_markdown(data))
     fails = failures(data)
     if fails:
         parts.append("## Ce qui a échoué\n")
         for title, items in fails:
+            parts.append(f"- **{title}** : " + " ; ".join(f"`{i}`" for i in items))
+        parts.append("")
+    found = breaches(data)
+    if found:
+        parts.append("## Failles trouvées (attaques cachées)\n")
+        for title, items in found:
             parts.append(f"- **{title}** : " + " ; ".join(f"`{i}`" for i in items))
         parts.append("")
     parts.append(f"## Ressenti (grille v{data['grille']['version']}, voir RESSENTI.md)\n")
@@ -197,7 +337,8 @@ def to_markdown(data: dict, date: str) -> str:
     parts.append(
         "## Méthode et limites\n\n"
         "Protocole complet : `PROTOCOLE.md`. Tâches neuves écrites pour ce banc, tests d'acceptation cachés, "
-        "aucun juge LLM pour la réussite. Deux rapports ne se comparent sur une tâche que si l'empreinte est identique. Un seul notateur pour le ressenti. Peu de passages par tâche : "
+        "aucun juge LLM pour la réussite. Axe sécurité à part : attaques cachées (exigées par le contrat ou implicites), "
+        "fuzzing différentiel contre la référence, analyse statique semgrep et gitleaks comptée par gravité, sans effet sur la réussite. Deux rapports ne se comparent sur une tâche que si l'empreinte est identique. Un seul notateur pour le ressenti. Peu de passages par tâche : "
         "un écart d'une tâche entre deux modèles n'est pas significatif.\n"
     )
     return "\n".join(parts)
@@ -232,8 +373,13 @@ def to_html(data: dict, date: str) -> str:
     e = html.escape
     meta, s = data["meta"], summary(data)
     banner = f'<div class="banner">{e(EXAMPLE_BANNER)}</div>' if meta.get("example") else ""
+    if calendar(data)["ressenti_missing"]:
+        banner += f'<div class="banner">{e(RESSENTI_BANNER)}</div>'
     fails = "".join(
         f"<li><b>{e(t)}</b> : " + " ; ".join(f"<code>{e(i)}</code>" for i in items) + "</li>" for t, items in failures(data)
+    )
+    found = "".join(
+        f"<li><b>{e(t)}</b> : " + " ; ".join(f"<code>{e(i)}</code>" for i in items) + "</li>" for t, items in breaches(data)
     )
     r = data["ressenti"]
     who = f"<p class='muted'>Notateur : {e(r.get('evaluator', 'non indiqué'))} · {e(r.get('date') or 'date non indiquée')}</p>" if r else ""
@@ -250,11 +396,14 @@ def to_html(data: dict, date: str) -> str:
 <div><b>{e(', '.join(map(str, s['repeat'])))}</b><span>passage(s) par tâche</span></div></div>
 <h2>Résultats par tâche</h2>
 {html_table(TASK_HEADER, task_rows(data))}
+{calendar_html(data)}
 {'<h2>Ce qui a échoué</h2><ul>' + fails + '</ul>' if fails else ''}
+{'<h2>Failles trouvées (attaques cachées)</h2><ul>' + found + '</ul>' if found else ''}
 <h2>Ressenti (grille v{data['grille']['version']})</h2>{who}
 {html_table(["Critère", "Note", "Preuve"], ressenti_rows(data))}
 <h2>Méthode et limites</h2>
 <p class="muted">Tâches neuves écrites pour ce banc, tests d'acceptation cachés, aucun juge LLM pour la réussite.
+Axe sécurité à part : attaques cachées (exigées par le contrat ou implicites), fuzzing différentiel contre la référence, analyse statique semgrep et gitleaks comptée par gravité, sans effet sur la réussite.
 Deux rapports ne se comparent sur une tâche que si l'empreinte est identique. Un seul notateur pour le ressenti. Peu de passages par tâche : un écart d'une tâche entre deux modèles n'est pas significatif.
 Protocole complet : PROTOCOLE.md du dépôt.</p>
 </main></body></html>

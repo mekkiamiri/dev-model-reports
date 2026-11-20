@@ -1,0 +1,62 @@
+{
+  "id": "secu-jeton",
+  "kind": "securite",
+  "title": "Signer et vérifier un jeton HMAC",
+  "summary": "Jeton HMAC-SHA256 au format imposé, avec expiration : refuser tout jeton forgé, tronqué ou expiré.",
+  "timeout_agent_s": 1800,
+  "timeout_tests_s": 60,
+  "hidden_tests": 16,
+  "timeout_attack_s": 8,
+  "attacks": [
+    {
+      "id": "alg-none",
+      "famille": "algorithme",
+      "exigee": true
+    },
+    {
+      "id": "signature-tronquee",
+      "famille": "signature",
+      "exigee": true
+    },
+    {
+      "id": "expiration",
+      "famille": "expiration",
+      "exigee": true
+    },
+    {
+      "id": "format-exp",
+      "famille": "format",
+      "exigee": true
+    },
+    {
+      "id": "sujet-injecte",
+      "famille": "format",
+      "exigee": true
+    },
+    {
+      "id": "comparaison-constante",
+      "famille": "comparaison",
+      "exigee": true
+    },
+    {
+      "id": "cle-courte",
+      "famille": "cle",
+      "exigee": true
+    },
+    {
+      "id": "jeton-geant",
+      "famille": "format",
+      "exigee": true
+    },
+    {
+      "id": "ttl-geant",
+      "famille": "bornes",
+      "exigee": false
+    },
+    {
+      "id": "fuzz",
+      "famille": "fuzz",
+      "exigee": true
+    }
+  ]
+}
